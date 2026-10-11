@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>불량 선별 HMI</title>
+  <!-- 테마를 그리기 전에 정하려고 설정 파일만 먼저 읽는다 -->
+  <script src="js/config.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+  <link rel="stylesheet" href="css/hmi.css">
+</head>
+<body data-phase="offline">
+  <div class="alarm-bar" aria-hidden="true"></div>
+
+  <div class="app">
+    <!-- 조작반: 상태 → 긴급정지 → 시작/정지 → 원점 → 모드 → 종료 -->
+    <aside class="panel" data-i18n-aria="panel.label" aria-label="조작반">
+      <div class="state" aria-live="polite">
+        <p class="state__word"><span class="lamp lamp--state" id="state-lamp"></span><span id="state-word">연결 중</span></p>
+        <p class="state__detail" id="state-detail"></p>
+      </div>
+
+      <div class="estop">
+        <button type="button" class="estop__plate" id="btn-estop" aria-pressed="false">
+          <span class="estop__head" aria-hidden="true"></span>
+          <span id="estop-label" data-i18n="estop.press">긴급정지</span>
+        </button>
+        <p class="note" id="estop-note" hidden></p>
+        <button type="button" class="key" id="btn-release" hidden>
+          <span data-i18n="estop.release">긴급정지 해제</span>
+        </button>
+      </div>
+
+      <div class="controls">
+        <button type="button" class="key key--primary" id="btn-run">
+          <svg class="key__icon" aria-hidden="true"><use id="run-icon" href="#i-play"></use></svg>
+          <span id="run-label" data-i18n="run.start">시작</span>
+        </button>
+        <p class="note" id="run-note" hidden></p>
+
+        <button type="button" class="key" id="btn-home">
+          <svg class="key__icon" aria-hidden="true"><use href="#i-home"></use></svg>
+          <span data-i18n="home.label">원점 잡기</span>
+        </button>
+        <p class="note" id="home-note" hidden></p>
+
+        <div class="mode" role="group" aria-labelledby="mode-legend">
+          <p class="mode__legend" id="mode-legend" data-i18n="mode.legend">운전 모드</p>
+          <div class="mode__keys">
+            <button type="button" class="key key--mode" data-mode="auto" aria-pressed="true"><span data-i18n="mode.auto">자동</span></button>
+            <button type="button" class="key key--mode" data-mode="manual" aria-pressed="false"><span data-i18n="mode.manual">수동</span></button>
+          </div>
+          <p class="note" id="mode-note" hidden></p>
+        </div>
+
+        <div class="joints" id="joints" hidden>
+          <p class="joints__title" data-i18n="joints.title">리더암 각도</p>
+          <dl class="joints__list" id="joints-list"></dl>
+        </div>
+      </div>
+
+      <div class="exit">
+        <button type="button" class="key key--quiet" id="btn-exit">
+          <svg class="key__icon" aria-hidden="true"><use href="#i-power"></use></svg>
+          <span data-i18n="exit.label">프로그램 종료</span>
+        </button>
+        <p class="note" id="exit-note" hidden></p>
+      </div>
+    </aside>
+
+    <!-- 보기: 카메라 → 생산 통계 → 맨 아래 줄(장치 연결 · 다크 모드 · 로그) -->
+    <main class="view">
+      <section class="camera" data-i18n-aria="camera.label" aria-label="카메라 영상">
+        <canvas class="camera__media" id="camera-canvas" hidden></canvas>
+        <img class="camera__media" id="camera-img" alt="" hidden>
+        <div class="camera__empty" id="camera-empty">
+          <p data-i18n="camera.off">카메라가 꺼져 있습니다</p>
+          <button type="button" class="key key--screen" id="btn-camera">
+            <span id="camera-btn-label" data-i18n="camera.connect">카메라 연결</span>
+          </button>
+          <p class="note note--screen" id="camera-note" hidden></p>
+        </div>
+        <button type="button" class="camera__off" id="btn-camera-off" hidden>
+          <span data-i18n="camera.disconnect">카메라 끄기</span>
+        </button>
+      </section>
+
+      <section class="stats" data-i18n-aria="stats.label" aria-label="생산 통계">
+        <dl class="stats__list">
+          <div class="stat"><dt data-i18n="stats.total">검사</dt><dd id="stat-total">0</dd></div>
+          <div class="stat"><dt data-i18n="stats.good">양품</dt><dd id="stat-good">0</dd></div>
+          <div class="stat"><dt data-i18n="stats.defect">불량</dt><dd id="stat-defect">0</dd></div>
+          <div class="stat"><dt data-i18n="stats.rate">불량률</dt><dd id="stat-rate">0.0%</dd></div>
+        </dl>
+      </section>
+
+      <div class="view__foot">
+        <div class="devices" id="devices" hidden>
+          <p class="devices__title" data-i18n="devices.title">장치 연결 (개발용)</p>
+          <ul class="devices__list" id="device-list"></ul>
+        </div>
+        <div class="view__tools">
+          <button type="button" class="key key--quiet view__toggle" id="btn-theme" aria-pressed="false">
+            <svg class="key__icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+            <span data-i18n="theme.dark">다크 모드</span>
+          </button>
+          <button type="button" class="key key--quiet view__toggle" id="btn-log" aria-expanded="false" aria-controls="logwin">
+            <span class="view__log-icon">
+              <svg class="key__icon" aria-hidden="true"><use href="#i-log"></use></svg>
+              <span class="notify-dot" id="log-dot" hidden></span>
+            </span>
+            <span data-i18n="log.open">로그</span>
+            <span class="sr-only" id="log-dot-text" hidden data-i18n="log.unread">확인하지 않은 경고가 있습니다</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 로그 창: 보기 영역 위에만 떠서 조작반(긴급정지)은 가리지 않는다 -->
+      <dialog class="logwin" id="logwin" aria-labelledby="logwin-title">
+        <div class="logwin__head">
+          <h2 class="logwin__title" id="logwin-title" data-i18n="log.title">로그</h2>
+          <button type="button" class="key key--quiet" id="btn-log-close"><span data-i18n="log.close">닫기</span></button>
+        </div>
+        <ol class="log__list" id="log-list"></ol>
+        <p class="log__empty" id="log-empty" data-i18n="log.empty">아직 기록이 없습니다. 라인을 시작하면 여기에 쌓입니다.</p>
+      </dialog>
+    </main>
+  </div>
+
+  <dialog class="confirm" id="dlg" aria-labelledby="dlg-title" aria-describedby="dlg-body">
+    <form method="dialog">
+      <h2 class="confirm__title" id="dlg-title"></h2>
+      <p class="confirm__body" id="dlg-body"></p>
+      <div class="confirm__actions">
+        <button type="submit" value="cancel" class="key key--quiet" id="dlg-cancel"><span data-i18n="dialog.cancel">취소</span></button>
+        <button type="submit" value="confirm" class="key key--primary" id="dlg-confirm"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="ended" id="ended" hidden>
+    <p class="ended__title" data-i18n="ended.title">HMI를 종료했습니다</p>
+    <p class="ended__body" data-i18n="ended.body">이 창을 닫아도 됩니다.</p>
+  </div>
+
+  <svg class="icons" aria-hidden="true">
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5" fill="currentColor"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></g></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-log" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10"/><path d="M4.5 6.5h.5M4.5 12h.5M4.5 17.5h.5" stroke-width="2.5"/></g></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3.5v8"/><path d="M6.6 7.2a7.5 7.5 0 1 0 10.8 0"/></g></symbol>
+  </svg>
+
+  <!-- 원점값 → 문구 → 서버 연결 → 화면 순서로 읽습니다 (설정은 <head>에서 먼저). 모듈 없이 파일을 더블클릭해도 열리도록 일반 스크립트를 씁니다. -->
+  <script src="config/home-position.js"></script>
+  <script src="js/i18n/ko.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/mock-server.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/camera-sim.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
