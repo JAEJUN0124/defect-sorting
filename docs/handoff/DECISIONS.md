@@ -60,3 +60,8 @@ handoff_spec: 1
 - 범위: 저장소 defect-sorting
 - 결정: HMI만이 아니라 이 프로젝트에서 사용자가 맡는 작업을 모두 이 저장소에 둔다.
 - 근거: 사용자 2026-10-12 · HISTORY/2026-10-12-hmi-decisions.md
+
+## D-012 대시보드의 장치 연결 표시는 늘 보인다
+- 범위: 대시보드 화면(`hmi-web-mockup/dashboard.html`)
+- 결정: 대시보드의 장치 연결 상태(서버·컨베이어·로봇팔·리더암·카메라) 표시는 개발 단계가 끝나도 빼지 않고 늘 보인다. 대시보드에 한한 D-008의 예외다.
+- 근거: 사용자 2026-10-12 · HISTORY/2026-10-12-dashboard-device-display.md
