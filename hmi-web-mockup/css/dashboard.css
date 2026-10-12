@@ -1,7 +1,8 @@
 /* =========================================================
    불량 선별 대시보드 — 감시반
    조작 화면이 제어함의 누름버튼 쪽이라면, 대시보드는 같은 제어함의 계기 쪽이다.
-   눈금·계수기·화면만 있고, 누를 수 있는 것은 긴급정지와 화면 이동·테마뿐이다.
+   눈금·계수기·화면이 중심이고, 조작 화면과 같은 조작도 한다 (js/controls.js):
+   윗판 2단(운전 모드 · 시작/정지 · 원점 잡기 · 프로그램 종료)과 카메라 화면(카메라마다 연결/끄기).
    색·글자·간격 토큰은 base.css를 그대로 쓴다.
    ========================================================= */
 
@@ -23,7 +24,7 @@
   min-height: 100dvh;
 }
 
-/* ---------- 윗판: 상태 → 긴급정지 → 계수기 ---------- */
+/* ---------- 윗판: 1단 상태 → 긴급정지 → 계수기 / 2단 운전 모드 → 시작/정지 → 원점·종료 ---------- */
 
 .rail {
   position: sticky;           /* 아래를 넘겨 봐도 긴급정지는 늘 보인다 */
@@ -32,7 +33,7 @@
   display: grid;
   grid-template-columns: minmax(260px, 320px) auto minmax(0, 1fr);
   align-items: center;
-  gap: var(--s-4) var(--s-6);
+  gap: var(--s-3) var(--s-6);
   padding: var(--s-4) var(--s-5);
   background: var(--c-plate);
 }
@@ -96,6 +97,31 @@
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--s-4);
 }
+
+/* 2단 조작 줄: 1단과 같은 칸을 써서 시작/정지가 긴급정지 바로 아래에 같은 폭으로 온다 (실물 조작반의 계기 줄 아래 단추 줄) */
+.rail__controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--c-line);
+}
+.ops__mode { display: flex; align-items: center; gap: var(--s-2); }
+.ops__label { margin-right: var(--s-2); font-size: var(--fs-s); color: var(--c-ink-2); white-space: nowrap; }
+.ops__mode .key--mode { min-width: 64px; justify-content: center; border-color: var(--c-line); }
+.ops__mode .key--mode[aria-pressed="true"] { background: var(--c-key); border: 2px solid var(--c-ink); color: var(--c-ink); font-weight: 600; }
+.runslot { display: flex; }
+.runkey {
+  justify-content: center;
+  width: 100%;
+  min-height: var(--quiet-h);
+  padding: 0 var(--s-4);
+}
+.ops__more { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.ops__key { border-color: var(--c-line); }
+.ops__note { flex: 1 1 auto; min-width: 0; }
+.ops__exit { margin-left: auto; }
 .tally dt { font-size: var(--fs-s); color: var(--c-ink-2); }
 .tally dd {
   font-size: var(--fs-xl);
@@ -133,6 +159,7 @@
 .sec__title { font-size: var(--fs-m); font-weight: 600; }
 .sec__title--alone { margin-bottom: var(--s-2); }
 .sec__note { font-size: var(--fs-s); color: var(--c-ink-2); }
+.sec__note b { color: var(--c-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .empty { padding: var(--s-2) 0; color: var(--c-ink-2); font-size: var(--fs-s); }
 
@@ -152,6 +179,22 @@
   gap: var(--s-3);
 }
 .cam__fps { font-size: var(--fs-s); color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+/* 카메라 끄기: 조작 화면처럼 영상 오른쪽 위에 겹쳐 둔다 (나타나도 칸 높이가 그대로) */
+.cam__off {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  width: auto;
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  background: var(--c-screen);
+  border-color: var(--c-ink-3);
+  color: #FFFFFF;
+  font-size: var(--fs-s);
+}
+.cam__off:hover:not(:disabled) { background: var(--c-screen-down); border-color: var(--c-on-screen); color: #FFFFFF; }
+.cam__off:active:not(:disabled) { background: var(--c-screen-down); }
+.cam__off:focus-visible { outline-color: #FFFFFF; }
 .cam__screen {
   position: relative;
   aspect-ratio: 16 / 9;
@@ -165,12 +208,30 @@
   inset: 0;
   display: grid;
   place-content: center;
-  gap: var(--s-1);
+  justify-items: center;
+  gap: var(--s-3);
   padding: var(--s-4);
   color: var(--c-on-screen);
   font-size: var(--fs-s);
   text-align: center;
 }
+
+/* 카메라 화면 위 키: 화면색 바탕에 밝은 테두리 */
+.cam__on {
+  width: auto;
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  background: transparent;
+  border-color: var(--c-on-screen);
+  color: var(--c-on-screen);
+  font-size: var(--fs-m);
+}
+.cam__on:hover:not(:disabled) { background: var(--c-screen-down); border-color: var(--c-on-screen); }
+.cam__on:active:not(:disabled) { background: var(--c-screen-down); }
+.cam__on:disabled { background: transparent; color: var(--c-ink-3); border-color: var(--c-ink-3); }
+.cam__on:focus-visible { outline-color: var(--c-on-screen); }
+.note--screen { color: var(--c-on-screen); }
+.note--screen[data-kind="error"] { color: var(--c-yellow); }
 
 /* ---------- 분당 판정 ---------- */
 
@@ -188,7 +249,7 @@
 .legend__key--good { background: var(--c-chart-good); }
 .legend__key--defect { background: var(--c-chart-defect); }
 
-.trend__plot { position: relative; height: 120px; }
+.trend__plot { position: relative; height: 96px; }
 .trend__svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .trend__svg text { fill: var(--c-ink-2); font: 400 var(--fs-s) var(--font); font-variant-numeric: tabular-nums; }
 .trend__grid { stroke: var(--c-grid); stroke-width: 1; shape-rendering: crispEdges; }
@@ -369,11 +430,46 @@
 .foot__sim .key { min-height: 44px; font-size: var(--fs-s); }
 .foot__tools { display: flex; gap: var(--s-2); margin-left: auto; }
 
+/* ---------- 확인 창 · 종료 화면 (조작 화면과 같은 모양) ---------- */
+
+.confirm {
+  width: min(440px, calc(100vw - 32px));
+  padding: var(--s-6);
+  background: var(--c-key);
+  color: var(--c-ink);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-key);
+}
+.confirm::backdrop { background: var(--c-scrim, rgb(28 32 36 / .5)); }
+.confirm__title { font-size: var(--fs-l); font-weight: 600; line-height: 1.3; }
+.confirm__body { margin-top: var(--s-3); color: var(--c-ink-2); }
+.confirm__actions { display: flex; justify-content: flex-end; gap: var(--s-3); margin-top: var(--s-6); }
+.confirm__actions .key { width: auto; min-height: 48px; padding: 0 var(--s-5); font-size: var(--fs-m); }
+@media (prefers-reduced-motion: no-preference) {
+  .confirm[open] { animation: fade-in var(--t-fast) ease-out; }
+}
+
+.ended {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--s-2);
+  background: var(--c-plate);
+  text-align: center;
+  z-index: 20;
+}
+.ended__title { font-size: var(--fs-l); font-weight: 600; }
+.ended__body { color: var(--c-ink-2); }
+
 /* ---------- 화면 크기 ---------- */
 
 /* 1280px 아래: 계수기를 다음 줄로 */
 @media (max-width: 1279px) {
   .rail { grid-template-columns: minmax(0, 1fr) auto; }
+  .rail__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-5); }
+  .runslot { width: 200px; }
+  .ops__more { flex: 1 1 360px; }
   .tally { grid-column: 1 / -1; }
   .body { grid-template-columns: minmax(0, 1fr) minmax(360px, 400px); }
 }
@@ -382,6 +478,10 @@
 @media (max-width: 959px) {
   .rail { position: static; grid-template-columns: 1fr; }
   .stop { width: 100%; }
+  .runslot { width: 100%; }
+  .runkey { min-height: 64px; }
+  .ops__more { flex-wrap: wrap; }
+  .ops__exit { margin-left: 0; }
   .tally { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .body { grid-template-columns: minmax(0, 1fr); }
   .foot__tools { margin-left: 0; }

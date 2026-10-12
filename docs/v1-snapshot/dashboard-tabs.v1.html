@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>불량 선별 대시보드</title>
+  <!-- 테마를 그리기 전에 정하려고 설정 파일만 먼저 읽는다 -->
+  <script src="js/config.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/dashboard-tabs.css">
+</head>
+<body data-screen="dashboard" data-title-key="dbt.title" data-phase="offline">
+  <div class="alarm-bar" aria-hidden="true"></div>
+
+  <div class="shell">
+    <!-- 윗판: 상태 → 긴급정지 → 계수기. 어느 탭을 보든 늘 보인다 -->
+    <header class="banner bezel" data-i18n-aria="db.rail" aria-label="라인 상태">
+      <div class="status" aria-live="polite">
+        <p class="status__word"><span class="lamp" id="state-lamp"></span><span id="state-word">연결 중</span></p>
+        <p class="status__detail" id="state-detail"></p>
+      </div>
+
+      <button type="button" class="stop" id="btn-estop" aria-pressed="false">
+        <span class="stop__head" aria-hidden="true"></span>
+        <span id="estop-label" data-i18n="estop.press">긴급정지</span>
+      </button>
+
+      <dl class="tally" data-i18n-aria="db.tally" aria-label="생산 통계">
+        <div><dt data-i18n="stats.total">검사</dt><dd id="t-total">0</dd></div>
+        <div><dt data-i18n="stats.good">양품</dt><dd id="t-good">0</dd></div>
+        <div><dt data-i18n="stats.defect">불량</dt><dd id="t-defect">0</dd></div>
+        <div><dt data-i18n="stats.rate">불량률</dt><dd id="t-rate">0.0%</dd></div>
+        <div><dt data-i18n="db.pace">분당 처리</dt><dd id="t-pace">–</dd></div>
+        <div><dt data-i18n="db.latency">판정 시간</dt><dd id="t-latency">–</dd></div>
+      </dl>
+    </header>
+
+    <!-- 탭 줄: 운전 → 설비 → 기록. 탭마다 그 영역의 가장 나쁜 상태를 글자로 붙인다 -->
+    <nav class="rail bezel" data-i18n-aria="dbt.nav" aria-label="대시보드 화면">
+      <div class="tabs" role="tablist" aria-orientation="vertical" data-i18n-aria="dbt.nav" aria-label="대시보드 화면">
+        <p class="tabs__group" aria-hidden="true" data-i18n="dbt.group.run">운전</p>
+        <button type="button" role="tab" class="tab" id="tab-overview" data-tab="overview" aria-controls="page-overview" aria-selected="true">
+          <span data-i18n="dbt.tab.overview">개요</span><span class="tab__badge" data-badge="overview"></span>
+        </button>
+        <button type="button" role="tab" class="tab" id="tab-production" data-tab="production" aria-controls="page-production" aria-selected="false" tabindex="-1">
+          <span data-i18n="dbt.tab.production">생산</span><span class="tab__badge" data-badge="production"></span>
+        </button>
+        <button type="button" role="tab" class="tab" id="tab-inspection" data-tab="inspection" aria-controls="page-inspection" aria-selected="false" tabindex="-1">
+          <span data-i18n="dbt.tab.inspection">검사</span><span class="tab__badge" data-badge="inspection"></span>
+        </button>
+        <p class="tabs__group" aria-hidden="true" data-i18n="dbt.group.equip">설비</p>
+        <button type="button" role="tab" class="tab" id="tab-arm" data-tab="arm" aria-controls="page-arm" aria-selected="false" tabindex="-1">
+          <span data-i18n="arm.arm">로봇팔</span><span class="tab__badge" data-badge="arm"></span>
+        </button>
+        <button type="button" role="tab" class="tab" id="tab-leader" data-tab="leader" aria-controls="page-leader" aria-selected="false" tabindex="-1">
+          <span data-i18n="arm.leader">리더암</span><span class="tab__badge" data-badge="leader"></span>
+        </button>
+        <button type="button" role="tab" class="tab" id="tab-devices" data-tab="devices" aria-controls="page-devices" aria-selected="false" tabindex="-1">
+          <span data-i18n="dbt.tab.devices">장치</span><span class="tab__badge" data-badge="devices"></span>
+        </button>
+        <p class="tabs__group" aria-hidden="true" data-i18n="dbt.group.record">기록</p>
+        <button type="button" role="tab" class="tab" id="tab-alarms" data-tab="alarms" aria-controls="page-alarms" aria-selected="false" tabindex="-1">
+          <span data-i18n="dbt.tab.alarms">경보</span><span class="tab__badge" data-badge="alarms"></span>
+        </button>
+        <button type="button" role="tab" class="tab" id="tab-system" data-tab="system" aria-controls="page-system" aria-selected="false" tabindex="-1">
+          <span data-i18n="dbt.tab.system">시스템</span><span class="tab__badge" data-badge="system"></span>
+        </button>
+      </div>
+
+    </nav>
+
+    <main class="canvas" id="canvas">
+      <!-- ===== 개요 ===== -->
+      <section class="page" id="page-overview" role="tabpanel" aria-labelledby="tab-overview">
+        <div class="page__head">
+          <h1 class="page__title" data-i18n="dbt.page.overview">라인 개요</h1>
+        </div>
+        <div class="grid grid--grow-last">
+          <section class="pnl span-12" aria-labelledby="flow-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="flow-title" data-i18n="dbt.flow">공정 흐름</h2>
+              <p class="pnl__meta" data-i18n="dbt.flow.note">부품이 왼쪽에서 오른쪽으로 갑니다</p>
+            </div>
+            <div class="flow" id="flow" data-flowing="false">
+              <div class="st" id="st-conveyor">
+                <p class="st__name" data-i18n="device.conveyor">컨베이어</p>
+                <div class="st__body">
+                  <p class="st__state" data-f="state">–</p>
+                  <p class="st__row"><span data-i18n="db.pace">분당 처리</span><b data-f="pace">–</b></p>
+                  <p class="st__row"><span data-i18n="dbt.ratio.since">가동 시간</span><b data-f="runtime">–</b></p>
+                  <p class="st__row"><span data-i18n="dbt.flow.link">장치</span><b data-f="link">–</b></p>
+                </div>
+              </div>
+              <div class="link" aria-hidden="true"></div>
+              <div class="st" id="st-camera">
+                <p class="st__name" data-i18n="dbt.flow.camera">촬영</p>
+                <div class="st__body" data-f="cams"></div>
+              </div>
+              <div class="link" aria-hidden="true"></div>
+              <div class="st" id="st-judge">
+                <p class="st__name" data-i18n="dbt.flow.judge">판정</p>
+                <div class="st__body">
+                  <p class="st__state" data-f="state">–</p>
+                  <p class="st__row"><span data-i18n="db.latency">판정 시간</span><b data-f="latency">–</b></p>
+                  <p class="st__row"><span data-i18n="dbt.flow.last">마지막 판정</span><b data-f="conf">–</b></p>
+                  <p class="st__row"><span data-i18n="stats.rate">불량률</span><b data-f="rate">–</b></p>
+                </div>
+              </div>
+              <div class="link" aria-hidden="true"></div>
+              <div class="st" id="st-arm">
+                <p class="st__name" data-i18n="dbt.flow.sort">분류</p>
+                <div class="st__body">
+                  <p class="st__state" data-f="state">–</p>
+                  <p class="st__row"><span data-i18n="mode.legend">운전 모드</span><b data-f="mode">–</b></p>
+                  <p class="st__row"><span data-i18n="dbt.flow.hottest">최고 온도</span><b data-f="temp">–</b></p>
+                  <p class="st__row"><span data-i18n="db.arm.supply">전원</span><b data-f="supply">–</b></p>
+                </div>
+              </div>
+              <div class="fork" aria-hidden="true">
+                <span class="fork__stub"></span><span class="fork__bar"></span>
+                <span class="fork__arrow fork__arrow--up"></span><span class="fork__arrow fork__arrow--down"></span>
+              </div>
+              <div class="outs">
+                <div class="st" id="st-good">
+                  <p class="st__name" data-i18n="dbt.flow.good">양품 통과</p>
+                  <div class="st__body"><p class="st__count" data-f="n">0</p></div>
+                </div>
+                <div class="st" id="st-defect">
+                  <p class="st__name" data-i18n="dbt.flow.defect">불량 상자</p>
+                  <div class="st__body"><p class="st__count" data-f="n">0</p></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="pnl span-4" aria-labelledby="ov-trend-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="ov-trend-title" data-i18n="db.trend">분당 판정</h2>
+              <p class="pnl__meta" data-i18n="dbt.last30">최근 30분</p>
+              <ul class="legend pnl__tools">
+                <li><span class="legend__key legend__key--good" aria-hidden="true"></span><span data-i18n="result.good">양품</span></li>
+                <li><span class="legend__key legend__key--defect" aria-hidden="true"></span><span data-i18n="result.defect">불량</span></li>
+              </ul>
+            </div>
+            <div class="pnl__body">
+              <div class="chart" id="ov-trend" tabindex="0" role="img" data-i18n-aria="db.trend.label" aria-label="최근 30분 분당 판정 수"></div>
+            </div>
+          </section>
+
+          <section class="pnl span-4" aria-labelledby="ov-recent-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="ov-recent-title" data-i18n="db.recent">최근 판정</h2>
+              <p class="pnl__meta" id="ov-recent-meta"></p>
+            </div>
+            <div class="pnl__body pnl__body--flush pnl__body--scroll">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="db.recent.id">번호</th>
+                    <th scope="col" data-i18n="db.recent.time">시각</th>
+                    <th scope="col" data-i18n="db.recent.result">판정</th>
+                    <th scope="col" class="num" data-i18n="db.recent.conf">신뢰도</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-recent"></tbody>
+              </table>
+              <p class="empty" id="ov-recent-empty" data-i18n="db.recent.empty">아직 판정이 없습니다. 라인을 시작하면 여기에 쌓입니다.</p>
+            </div>
+          </section>
+
+          <section class="pnl span-4" aria-labelledby="ov-active-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="ov-active-title" data-i18n="dbt.active">지금 이상</h2>
+              <p class="pnl__meta" id="ov-active-meta"></p>
+            </div>
+            <div class="pnl__body pnl__body--flush pnl__body--scroll">
+              <ol class="alist" id="ov-active"></ol>
+              <p class="ok-line" id="ov-active-empty"><span class="lamp" data-color="green" aria-hidden="true"></span><span data-i18n="dbt.active.none">지금 이상이 없습니다.</span></p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== 생산 ===== -->
+      <section class="page" id="page-production" role="tabpanel" aria-labelledby="tab-production" hidden>
+        <div class="page__head">
+          <h1 class="page__title" data-i18n="dbt.page.production">생산 현황</h1>
+          <p class="page__meta" data-i18n="db.trend.note">이 화면을 연 뒤부터 셉니다</p>
+          <div class="page__tools">
+            <span id="range-label" data-i18n="dbt.range">보는 범위</span>
+            <div class="seg" role="group" aria-labelledby="range-label" id="range">
+              <button type="button" data-range="30" aria-pressed="true">30분</button>
+              <button type="button" data-range="60" aria-pressed="false">60분</button>
+              <button type="button" data-range="120" aria-pressed="false">120분</button>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid--grow-all">
+          <section class="pnl span-8" aria-labelledby="pr-trend-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="pr-trend-title" data-i18n="db.trend">분당 판정</h2>
+              <p class="pnl__meta" data-f="range-meta"></p>
+              <ul class="legend pnl__tools">
+                <li><span class="legend__key legend__key--good" aria-hidden="true"></span><span data-i18n="result.good">양품</span></li>
+                <li><span class="legend__key legend__key--defect" aria-hidden="true"></span><span data-i18n="result.defect">불량</span></li>
+              </ul>
+            </div>
+            <div class="pnl__body">
+              <div class="chart" id="pr-trend" tabindex="0" role="img" data-i18n-aria="dbt.trend.label" aria-label="분당 판정 수. 화살표 키로 분을 옮겨 볼 수 있습니다"></div>
+            </div>
+          </section>
+
+          <section class="pnl span-4" aria-labelledby="pr-ratio-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="pr-ratio-title" data-i18n="dbt.ratio">판정 비율</h2>
+              <p class="pnl__meta" data-i18n="dbt.ratio.note">서버 집계</p>
+            </div>
+            <div class="pnl__body ratio">
+              <div class="ratio__bar" id="pr-ratio-bar" aria-hidden="true"><span class="ratio__good"></span><span class="ratio__defect"></span></div>
+              <dl class="readouts">
+                <div class="readout"><dt data-i18n="result.good">양품</dt><dd id="pr-good">0</dd></div>
+                <div class="readout"><dt data-i18n="result.defect">불량</dt><dd id="pr-defect">0</dd></div>
+                <div class="readout"><dt data-i18n="stats.rate">불량률</dt><dd id="pr-rate-value">0.0%</dd></div>
+              </dl>
+              <dl class="facts">
+                <dt data-i18n="dbt.ratio.since">가동 시간</dt><dd id="pr-runtime">–</dd>
+                <dt data-i18n="dbt.ratio.avgPace">평균 분당 처리</dt><dd id="pr-avgpace">–</dd>
+                <dt data-i18n="dbt.ratio.peak">가장 많이 처리한 분</dt><dd id="pr-peak">–</dd>
+              </dl>
+            </div>
+          </section>
+
+          <section class="pnl span-8" aria-labelledby="pr-rate-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="pr-rate-title" data-i18n="dbt.rateTrend">불량률 추이</h2>
+              <p class="pnl__meta" data-f="range-meta"></p>
+              <ul class="legend pnl__tools">
+                <li><span class="legend__key legend__key--line" aria-hidden="true"></span><span data-i18n="dbt.rateTrend.minute">분마다</span></li>
+                <li><svg width="16" height="2" aria-hidden="true"><line class="c-avg" x1="0" x2="16" y1="1" y2="1"/></svg><span data-i18n="dbt.rateTrend.avg">평균</span></li>
+              </ul>
+            </div>
+            <div class="pnl__body">
+              <div class="chart chart--s" id="pr-rate-chart" role="img" aria-label=""></div>
+            </div>
+          </section>
+
+          <section class="pnl span-4" aria-labelledby="pr-blocks-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="pr-blocks-title" data-i18n="dbt.blocks">10분 단위 집계</h2>
+            </div>
+            <div class="pnl__body pnl__body--flush pnl__body--scroll">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="dbt.blocks.span">시간대</th>
+                    <th scope="col" class="num" data-i18n="stats.total">검사</th>
+                    <th scope="col" class="num" data-i18n="result.defect">불량</th>
+                    <th scope="col" class="num" data-i18n="stats.rate">불량률</th>
+                  </tr>
+                </thead>
+                <tbody id="pr-blocks"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== 검사 ===== -->
+      <section class="page" id="page-inspection" role="tabpanel" aria-labelledby="tab-inspection" hidden>
+        <div class="page__head">
+          <h1 class="page__title" data-i18n="dbt.page.inspection">검사 영상과 판정</h1>
+          <p class="page__meta" data-i18n="dbt.inspection.note">영상 연결과 끄기는 조작 화면에서 합니다</p>
+        </div>
+        <div class="cams" id="cams"></div>
+        <div class="grid grid--grow-all">
+          <section class="pnl span-5" aria-labelledby="in-recent-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="in-recent-title" data-i18n="db.recent">최근 판정</h2>
+              <p class="pnl__meta" id="in-recent-meta"></p>
+            </div>
+            <div class="pnl__body pnl__body--flush pnl__body--scroll">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="db.recent.id">번호</th>
+                    <th scope="col" data-i18n="db.recent.time">시각</th>
+                    <th scope="col" data-i18n="db.recent.result">판정</th>
+                    <th scope="col" class="num" data-i18n="db.recent.conf">신뢰도</th>
+                    <th scope="col" class="num" data-i18n="db.recent.latency">판정 시간</th>
+                  </tr>
+                </thead>
+                <tbody id="in-recent"></tbody>
+              </table>
+              <p class="empty" id="in-recent-empty" data-i18n="db.recent.empty">아직 판정이 없습니다. 라인을 시작하면 여기에 쌓입니다.</p>
+            </div>
+          </section>
+
+          <section class="pnl span-4" aria-labelledby="in-latency-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="in-latency-title" data-i18n="db.latency">판정 시간</h2>
+              <p class="pnl__meta" id="in-latency-meta"></p>
+            </div>
+            <div class="pnl__body">
+              <dl class="readouts">
+                <div class="readout"><dt data-i18n="dbt.avg">평균</dt><dd id="in-lat-avg">–</dd></div>
+                <div class="readout"><dt data-i18n="dbt.max">최대</dt><dd id="in-lat-max">–</dd></div>
+                <div class="readout"><dt data-i18n="dbt.server">서버 값</dt><dd id="in-lat-server">–</dd></div>
+              </dl>
+              <div class="chart chart--s chart--below" id="in-latency" role="img" aria-label=""></div>
+            </div>
+          </section>
+
+          <section class="pnl span-3" aria-labelledby="in-conf-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="in-conf-title" data-i18n="dbt.conf">신뢰도 분포</h2>
+            </div>
+            <div class="pnl__body">
+              <div class="hist" id="in-conf"></div>
+              <p class="hist__note" id="in-conf-note"></p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== 로봇팔 · 리더암 (같은 틀, dashboard-tabs.js가 채운다) ===== -->
+      <section class="page" id="page-arm" role="tabpanel" aria-labelledby="tab-arm" hidden data-arm="arm"></section>
+      <section class="page" id="page-leader" role="tabpanel" aria-labelledby="tab-leader" hidden data-arm="leader"></section>
+
+      <!-- ===== 장치 ===== -->
+      <section class="page" id="page-devices" role="tabpanel" aria-labelledby="tab-devices" hidden>
+        <div class="page__head">
+          <h1 class="page__title" data-i18n="dbt.page.devices">장치 연결</h1>
+          <p class="page__meta" data-i18n="dbt.devices.note">서버가 알려 준 장치를 그대로 보입니다</p>
+        </div>
+        <div class="grid grid--grow-last">
+          <section class="pnl span-12" aria-labelledby="dv-list-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="dv-list-title" data-i18n="dbt.devices.list">장치 목록</h2>
+              <p class="pnl__meta" id="dv-count"></p>
+            </div>
+            <div class="pnl__body pnl__body--flush">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="dbt.devices.name">장치</th>
+                    <th scope="col" data-i18n="dbt.devices.state">상태</th>
+                    <th scope="col" data-i18n="dbt.devices.since">바뀐 시각</th>
+                    <th scope="col" class="num" data-i18n="dbt.devices.drops">끊긴 횟수</th>
+                    <th scope="col" data-i18n="dbt.devices.detail">세부</th>
+                  </tr>
+                </thead>
+                <tbody id="dv-rows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="pnl span-12" aria-labelledby="dv-log-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="dv-log-title" data-i18n="dbt.devices.log">연결 기록</h2>
+              <p class="pnl__meta" data-i18n="dbt.log.note">이 화면을 연 뒤의 기록</p>
+            </div>
+            <div class="pnl__body pnl__body--flush pnl__body--scroll">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="db.recent.time">시각</th>
+                    <th scope="col" data-i18n="dbt.log.level">등급</th>
+                    <th scope="col" data-i18n="dbt.log.msg">내용</th>
+                  </tr>
+                </thead>
+                <tbody id="dv-log"></tbody>
+              </table>
+              <p class="empty" id="dv-log-empty" data-i18n="dbt.devices.logEmpty">연결이 바뀐 기록이 없습니다.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== 경보 ===== -->
+      <section class="page" id="page-alarms" role="tabpanel" aria-labelledby="tab-alarms" hidden>
+        <div class="page__head">
+          <h1 class="page__title" data-i18n="dbt.page.alarms">경보</h1>
+          <p class="page__meta" data-i18n="dbt.alarms.note">불량 검출은 정상 공정이라 넣지 않습니다. 판정은 검사 탭에서 봅니다</p>
+        </div>
+        <div class="grid grid--grow-all">
+          <section class="pnl span-4" aria-labelledby="al-active-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="al-active-title" data-i18n="dbt.active">지금 이상</h2>
+              <p class="pnl__meta" id="al-active-meta"></p>
+            </div>
+            <div class="pnl__body pnl__body--flush pnl__body--scroll">
+              <ol class="alist" id="al-active"></ol>
+              <p class="ok-line" id="al-active-empty"><span class="lamp" data-color="green" aria-hidden="true"></span><span data-i18n="dbt.active.none">지금 이상이 없습니다.</span></p>
+            </div>
+          </section>
+
+          <section class="pnl span-8" aria-labelledby="al-log-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="al-log-title" data-i18n="dbt.log">기록</h2>
+              <p class="pnl__meta" data-i18n="dbt.log.note">이 화면을 연 뒤의 기록</p>
+              <div class="seg pnl__tools" role="group" data-i18n-aria="dbt.log.filter" aria-label="등급 고르기" id="log-filter">
+                <button type="button" data-filter="all" aria-pressed="true"></button>
+                <button type="button" data-filter="alarm" aria-pressed="false"></button>
+                <button type="button" data-filter="warning" aria-pressed="false"></button>
+                <button type="button" data-filter="info" aria-pressed="false"></button>
+              </div>
+            </div>
+            <div class="pnl__body pnl__body--flush pnl__body--scroll">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="db.recent.time">시각</th>
+                    <th scope="col" data-i18n="dbt.log.level">등급</th>
+                    <th scope="col" data-i18n="dbt.log.msg">내용</th>
+                    <th scope="col" data-i18n="dbt.log.source">판단</th>
+                  </tr>
+                </thead>
+                <tbody id="al-log"></tbody>
+              </table>
+              <p class="empty" id="al-log-empty" data-i18n="dbt.log.empty">아직 기록이 없습니다.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== 시스템 ===== -->
+      <section class="page" id="page-system" role="tabpanel" aria-labelledby="tab-system" hidden>
+        <div class="page__head">
+          <h1 class="page__title" data-i18n="dbt.page.system">시스템 정보</h1>
+          <p class="page__meta" data-i18n="dbt.system.note">설정 파일과 서버가 알려 준 값입니다. 여기서는 바꿀 수 없습니다</p>
+          <!-- 개발용: 가짜 서버에 이상을 흉내 낸다 (devMode이고 가짜 서버일 때만) -->
+          <div class="page__tools sims" id="sim" role="group" aria-labelledby="sim-label" hidden>
+            <span id="sim-label" data-i18n="db.sim">흉내 (개발용)</span>
+            <button type="button" class="key key--quiet view__toggle" data-sim="overheat" aria-pressed="false"><span data-i18n="db.sim.overheat">서보 과열</span></button>
+            <button type="button" class="key key--quiet view__toggle" data-sim="voltage" aria-pressed="false"><span data-i18n="db.sim.voltage">전압 이상</span></button>
+            <button type="button" class="key key--quiet view__toggle" data-sim="slow" aria-pressed="false"><span data-i18n="db.sim.slow">판정 지연</span></button>
+          </div>
+        </div>
+        <div class="grid grid--fixed">
+          <section class="pnl span-4" aria-labelledby="sy-conn-title">
+            <div class="pnl__head"><h2 class="pnl__title" id="sy-conn-title" data-i18n="dbt.sys.conn">서버 연결</h2></div>
+            <div class="pnl__body"><dl class="facts" id="sy-conn"></dl></div>
+          </section>
+          <section class="pnl span-4" aria-labelledby="sy-info-title">
+            <div class="pnl__head"><h2 class="pnl__title" id="sy-info-title" data-i18n="dbt.sys.info">서버 정보</h2></div>
+            <div class="pnl__body"><dl class="facts" id="sy-info"></dl></div>
+          </section>
+          <section class="pnl span-4" aria-labelledby="sy-perf-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="sy-perf-title" data-i18n="dbt.sys.perf">서버 부하</h2>
+              <p class="pnl__meta" id="sy-perf-meta"></p>
+            </div>
+            <div class="pnl__body"><dl class="facts" id="sy-perf"></dl></div>
+          </section>
+          <section class="pnl span-4" aria-labelledby="sy-limits-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="sy-limits-title" data-i18n="dbt.sys.limits">경고 기준</h2>
+              <p class="pnl__meta">config/robot.js</p>
+            </div>
+            <div class="pnl__body"><dl class="facts" id="sy-limits"></dl></div>
+          </section>
+          <section class="pnl span-4" aria-labelledby="sy-home-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="sy-home-title" data-i18n="home.label">원점 잡기</h2>
+              <p class="pnl__meta">config/home-position.js</p>
+            </div>
+            <div class="pnl__body"><dl class="facts" id="sy-home"></dl></div>
+          </section>
+          <section class="pnl span-4" aria-labelledby="sy-screen-title">
+            <div class="pnl__head">
+              <h2 class="pnl__title" id="sy-screen-title" data-i18n="dbt.sys.screen">화면 설정</h2>
+              <p class="pnl__meta">js/config.js</p>
+            </div>
+            <div class="pnl__body"><dl class="facts" id="sy-screen"></dl></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <!-- 아래 줄: 화면 이동·테마(탭 줄 아래 칸) · 장치 연결(대시보드는 늘 보인다, D-012) · 마지막 경보 · 시각 -->
+    <footer class="foot bezel">
+      <div class="foot__tools">
+        <a class="key key--quiet view__toggle" data-operator-link href="index.html"><span data-i18n="nav.operator">조작 화면</span></a>
+        <button type="button" class="key key--quiet view__toggle" data-theme-toggle aria-pressed="false"><span data-i18n="theme.dark">다크 모드</span></button>
+      </div>
+      <div class="foot__main">
+        <ul class="devstrip" id="devstrip" data-i18n-aria="db.devices" aria-label="장치"></ul>
+        <button type="button" class="lastalarm" id="lastalarm"></button>
+        <p class="clock" id="clock"></p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 조작 화면과 같은 순서로 읽는다. 모듈 없이 파일을 더블클릭해도 열리도록 일반 스크립트를 쓴다 -->
+  <script src="config/home-position.js"></script>
+  <script src="config/robot.js"></script>
+  <script src="js/i18n/ko.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/adapter.js"></script>
+  <script src="js/transport.js"></script>
+  <script src="js/mock-server.js"></script>
+  <script src="js/mock-hub.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/camera-sim.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/dashboard-tabs.js"></script>
+</body>
+</html>

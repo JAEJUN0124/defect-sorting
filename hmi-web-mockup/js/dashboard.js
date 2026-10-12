@@ -1,20 +1,21 @@
-// 대시보드 — 라인이 지금 괜찮은지, 잘 고르고 있는지를 한눈에 보는 감시 화면입니다.
-// 누를 수 있는 것은 긴급정지와 화면 이동·테마뿐입니다. 해제·시작·카메라 연결은 조작 화면에서 합니다.
+// 대시보드 — 라인이 지금 괜찮은지, 잘 고르고 있는지를 한눈에 보면서 조작 화면과 같은 기능도 쓰는 화면입니다.
+// 조작(시작/정지·긴급정지 해제·원점·운전 모드·카메라·프로그램 종료)은 js/controls.js가 조작 화면과 같은 규칙으로 보냅니다.
 // 서버 연결과 상태 모으기는 store.js, 영상은 camera.js가 맡습니다 (조작 화면과 같다).
 (function () {
   const cfg = window.HMI_CONFIG;
   const robot = window.HMI_ROBOT || {};
   const api = window.HmiApi;
   const store = window.HmiStore;
+  const ctl = window.HmiControls;
   const { t } = window.I18N;
   const $ = (id) => document.getElementById(id);
   const SVG = 'http://www.w3.org/2000/svg';
 
-  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', unknown: 'amber' };
-  const BLINKING = ['connecting', 'starting', 'stopping', 'homing'];
+  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', shutdown: 'amber', unknown: 'amber' };
+  const BLINKING = ['connecting', 'starting', 'stopping', 'homing', 'shutdown'];
   const NOTIFY_SKIP = ['defect_detected']; // 불량 검출은 정상 공정이라 경보 목록에 넣지 않는다 (조작 화면 알림 점과 같은 기준)
-  const ALARM_KEEP = 5; // 1440×900에서 스크롤 없이 들어가는 만큼 (지난 기록 전체는 조작 화면의 로그 창)
-  const RECENT_ROWS = 5;
+  const ALARM_KEEP = 4; // 1440×900에서 스크롤 없이 들어가는 만큼 (윗판 2단 조작 줄 포함, 지난 기록 전체는 조작 화면의 로그 창)
+  const RECENT_ROWS = 4;
   const TREND_MINUTES = 30;
   const JOINTS = robot.joints || ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper'];
   const ARMS = ['arm', 'leader'];
@@ -83,6 +84,7 @@
   });
 
   function phase() {
+    if (ctl.exiting) return 'shutdown';
     if (!store.state.everConnected) return 'connecting';
     if (!online() || !S()) return 'offline';
     if (S().estop) return 'estop';
@@ -109,6 +111,8 @@
   }
 
   const modeWord = () => t('mode.' + (S() && S().mode === 'manual' ? 'manual' : 'auto'));
+
+  ctl.onRender(() => renderRail()); // 조작이 실패하거나 풀리면 윗판 안내를 바로 바꾼다
 
   // ---------- 그리기 ----------
 
@@ -148,7 +152,7 @@
     else delete el.detail.dataset.kind;
     el.lamp.dataset.color = fault ? 'amber' : LAMP[p] || 'off';
     el.lamp.dataset.blink = String(BLINKING.includes(p));
-    el.estop.disabled = ['connecting', 'offline'].includes(p);
+    el.estop.disabled = ['connecting', 'offline', 'shutdown'].includes(p);
     el.estop.setAttribute('aria-pressed', String(p === 'estop'));
     el.estopLabel.textContent = t(p === 'estop' ? 'estop.latched' : 'estop.press');
   }
@@ -186,7 +190,7 @@
       c.empty.hidden = streaming;
       c.emptyTitle.textContent = t(lost ? 'db.camera.lost' : 'db.camera.off');
       c.emptyHint.hidden = lost;
-      c.view.set(streaming ? src : null);
+      c.view.set(streaming && !ctl.ended ? src : null);
     });
     sim.setBelt(!!S() && S().line === 'running');
     renderCamFps();
@@ -215,10 +219,31 @@
       const empty = document.createElement('div');
       empty.className = 'cam__empty';
       const emptyTitle = document.createElement('p');
-      const emptyHint = document.createElement('p');
-      emptyHint.textContent = t('db.camera.offHint');
-      empty.append(emptyTitle, emptyHint);
-      screen.append(stage, empty);
+      // 꺼져 있으면 이 카메라만 연결
+      const emptyHint = document.createElement('button');
+      emptyHint.type = 'button';
+      emptyHint.className = 'key cam__on';
+      emptyHint.dataset.ctl = 'camera-on';
+      emptyHint.dataset.camera = id;
+      const onLabel = document.createElement('span');
+      onLabel.dataset.ctlLabel = '';
+      onLabel.textContent = t('camera.connect');
+      emptyHint.appendChild(onLabel);
+      const note = document.createElement('p');
+      note.className = 'note note--screen';
+      note.dataset.note = 'camera';
+      note.dataset.camera = id;
+      note.hidden = true;
+      empty.append(emptyTitle, emptyHint, note);
+      // 켜져 있으면 영상 오른쪽 위에 끄기 (js/controls.js가 보이고 숨긴다)
+      const off = document.createElement('button');
+      off.type = 'button';
+      off.className = 'key cam__off';
+      off.dataset.ctl = 'camera-off';
+      off.dataset.camera = id;
+      off.textContent = t('camera.disconnect');
+      off.hidden = true;
+      screen.append(stage, empty, off);
       fig.append(head, screen);
       el.cams.appendChild(fig);
       // 가짜 영상에서 두 번째 카메라는 검사선 근처를 크게 보여 준다 (근접 카메라)
@@ -226,6 +251,7 @@
       ui.cams[id] = { view: new window.CameraView(stage, { sim, zoom }), empty, emptyTitle, emptyHint, fps };
     });
     ui.camSig = ids.join();
+    ctl.render();
   }
 
   function renderCamFps() {
@@ -697,6 +723,7 @@
 
   window.I18N.apply();
   buildArms();
+  ctl.render(); // 서버에 닿기 전에도 조작 단추가 지금 상태(연결 중)대로 보이게
   renderTheme();
   render();
   renderTrend();

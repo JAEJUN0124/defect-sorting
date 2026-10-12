@@ -17,7 +17,7 @@
   <div class="alarm-bar" aria-hidden="true"></div>
 
   <div class="db">
-    <!-- 윗판: 상태 → 긴급정지 → 계수기 (조작 화면과 같은 읽는 순서) -->
+    <!-- 윗판 1단(계기): 상태 → 긴급정지 → 계수기. 2단(조작): 운전 모드 → 시작/정지(긴급정지 바로 아래) → 원점 잡기 · 안내 · 프로그램 종료 -->
     <header class="rail" data-i18n-aria="db.rail" aria-label="라인 상태">
       <div class="rail__state" aria-live="polite">
         <p class="rail__word"><span class="lamp" id="state-lamp"></span><span id="state-word">연결 중</span></p>
@@ -37,6 +37,36 @@
         <div class="tally__item"><dt data-i18n="db.pace">분당 처리</dt><dd id="t-pace">–</dd></div>
         <div class="tally__item"><dt data-i18n="db.latency">판정 시간</dt><dd id="t-latency">–</dd></div>
       </dl>
+
+      <!-- 2단: 조작 (js/controls.js — 조작 화면과 같은 규칙) -->
+      <div class="rail__controls" role="group" data-i18n-aria="ctl.ops" aria-label="조작">
+        <div class="ops__mode" role="group" aria-labelledby="ops-mode-label">
+          <span class="ops__label" id="ops-mode-label" data-i18n="mode.legend">운전 모드</span>
+          <button type="button" class="key key--quiet key--mode" data-ctl="mode" data-mode="auto" aria-pressed="false"><span data-i18n="mode.auto">자동</span></button>
+          <button type="button" class="key key--quiet key--mode" data-ctl="mode" data-mode="manual" aria-pressed="false"><span data-i18n="mode.manual">수동</span></button>
+        </div>
+        <!-- 시작/정지 한 키: 긴급정지 바로 아래, 같은 폭. 긴급정지 중에는 같은 자리에 해제 키 -->
+        <div class="runslot">
+          <button type="button" class="key key--primary runkey" data-ctl="run" data-slot="banner">
+            <svg class="key__icon" aria-hidden="true"><use href="#i-play"></use></svg>
+            <span data-ctl-label data-i18n="run.start">시작</span>
+          </button>
+          <button type="button" class="key runkey" data-ctl="release" data-slot="banner" hidden>
+            <span data-i18n="estop.release">긴급정지 해제</span>
+          </button>
+        </div>
+        <div class="ops__more">
+          <button type="button" class="key key--quiet ops__key" data-ctl="home">
+            <svg class="key__icon" aria-hidden="true"><use href="#i-home"></use></svg>
+            <span data-i18n="home.label">원점 잡기</span>
+          </button>
+          <p class="note ops__note" data-note="run release mode home exit" aria-live="polite" hidden></p>
+          <button type="button" class="key key--quiet ops__key ops__exit" data-ctl="exit">
+            <svg class="key__icon" aria-hidden="true"><use href="#i-power"></use></svg>
+            <span data-i18n="exit.label">프로그램 종료</span>
+          </button>
+        </div>
+      </div>
     </header>
 
     <main class="body">
@@ -121,7 +151,28 @@
     </footer>
   </div>
 
+  <!-- 확인 창(긴급정지 해제·프로그램 종료)과 종료 화면 — 조작 화면과 같은 구조 -->
+  <dialog class="confirm" id="dlg" aria-labelledby="dlg-title" aria-describedby="dlg-body">
+    <form method="dialog">
+      <h2 class="confirm__title" id="dlg-title"></h2>
+      <p class="confirm__body" id="dlg-body"></p>
+      <div class="confirm__actions">
+        <button type="submit" value="cancel" class="key key--quiet" id="dlg-cancel"><span data-i18n="dialog.cancel">취소</span></button>
+        <button type="submit" value="confirm" class="key key--primary" id="dlg-confirm"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="ended" id="ended" hidden>
+    <p class="ended__title" data-i18n="ended.title">HMI를 종료했습니다</p>
+    <p class="ended__body" data-i18n="ended.body">이 창을 닫아도 됩니다.</p>
+  </div>
+
   <svg class="icons" aria-hidden="true">
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5" fill="currentColor"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></g></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3.5v8"/><path d="M6.6 7.2a7.5 7.5 0 1 0 10.8 0"/></g></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
     <symbol id="i-panel" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.5 3.5v17"/><circle cx="15" cy="9" r="2"/><path d="M13 15.5h4"/></g></symbol>
   </svg>
@@ -139,6 +190,7 @@
   <script src="js/store.js"></script>
   <script src="js/camera-sim.js"></script>
   <script src="js/camera.js"></script>
+  <script src="js/controls.js"></script>
   <script src="js/dashboard.js"></script>
 </body>
 </html>
