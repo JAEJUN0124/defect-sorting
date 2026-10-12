@@ -1,0 +1,93 @@
+/* =========================================================
+   개발·설치용 점검 도구 (tools/*.html) — 운영 화면이 아니다.
+   색·글자·키 토큰은 base.css를 그대로 쓴다.
+   ========================================================= */
+
+.tool {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--s-5) var(--s-5) var(--s-6);
+}
+.tool__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+  margin-bottom: var(--s-5);
+}
+.tool__title { font-size: var(--fs-l); font-weight: 600; line-height: 1.2; margin: 0; }
+.tool__lead { color: var(--c-ink-2); margin-top: var(--s-1); max-width: 72ch; }
+
+.panel-sec {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-5) 0;
+  border-top: 1px solid var(--c-line);
+}
+.panel-sec h2 { font-size: var(--fs-m); font-weight: 600; }
+.panel-sec p { max-width: 80ch; }
+.hint { font-size: var(--fs-s); color: var(--c-ink-2); }
+
+.row { display: flex; flex-wrap: wrap; align-items: end; gap: var(--s-3); }
+.field { display: grid; gap: var(--s-1); font-size: var(--fs-s); color: var(--c-ink-2); }
+.field input,
+.field select {
+  min-height: 44px;
+  min-width: 160px;
+  padding: 0 var(--s-3);
+  background: var(--c-key);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-key);
+  color: var(--c-ink);
+  font: inherit;
+  font-size: var(--fs-m);
+}
+.field--wide input { min-width: min(520px, 80vw); }
+
+.btn {
+  width: auto;
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  font-size: var(--fs-m);
+}
+
+.out {
+  margin: 0;
+  padding: var(--s-3);
+  background: var(--c-key);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-key);
+  font-size: var(--fs-s);
+  font-variant-numeric: tabular-nums;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-s); font-variant-numeric: tabular-nums; }
+.tbl th { padding: 0 var(--s-3) var(--s-1) 0; border-bottom: 1px solid var(--c-line); color: var(--c-ink-2); font-weight: 400; text-align: left; }
+.tbl td { height: 28px; padding: 0 var(--s-3) 0 0; border-bottom: 1px solid var(--c-line); }
+.tbl .num { text-align: right; }
+.tbl-wrap { overflow-x: auto; }
+
+/* 점검 결과: 글자로 판정을 먼저 쓰고 색은 거든다 */
+.checks { display: grid; gap: var(--s-1); margin: 0; padding: 0; list-style: none; font-size: var(--fs-s); }
+.checks li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: var(--s-2); }
+.checks [data-kind="ok"] .checks__mark { color: var(--c-green); font-weight: 600; }
+.checks [data-kind="warn"] .checks__mark { color: var(--c-amber-text); font-weight: 600; }
+.checks [data-kind="bad"] .checks__mark { color: var(--c-signal-red); font-weight: 600; }
+.is-warn { color: var(--c-amber-text); font-weight: 600; }
+.is-bad { color: var(--c-signal-red); font-weight: 600; }
+
+.preview {
+  position: relative;
+  width: min(640px, 100%);
+  aspect-ratio: 16 / 9;
+  background: var(--c-screen);
+  border: 1px solid var(--c-screen-edge);
+  border-radius: var(--r-screen);
+  overflow: hidden;
+}
+.preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }

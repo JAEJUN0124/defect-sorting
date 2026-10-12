@@ -67,11 +67,19 @@
     };
 
     // ---------- 보이는 요소 ----------
+    // 스크린 리더 전용(clip으로 잘라 1px로 숨긴) 요소와 그 안쪽은 화면에 안 보이므로 세지 않는다
+    const clippedAway = (el) => {
+      for (let node = el; node && node !== document.body; node = node.parentElement) {
+        if (/^rect\(\s*0(px)?\s*,?\s*0(px)?\s*,?\s*0(px)?\s*,?\s*0(px)?\s*\)$/.test(getComputedStyle(node).clip || '')) return true;
+      }
+      return false;
+    };
     const isVisible = (el) => {
       const cs = getComputedStyle(el);
       if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
       const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < VH && r.left < VW;
+      if (!(r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < VH && r.left < VW)) return false;
+      return !clippedAway(el);
     };
     const all = Array.from(document.body.querySelectorAll('*')).filter((el) => !el.closest('svg') && isVisible(el));
     const ownText = (el) => Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim();
@@ -250,12 +258,16 @@
     const pct = (v) => Math.round(v * 1000) / 10;
     const clamp = (v) => Math.max(0, Math.min(100, Math.round(v)));
     const step = (value, table) => { for (const [limit, score] of table) if (value <= limit) return score; return table[table.length - 1][1]; };
-    // 요구사항을 하는 데 꼭 필요한 조작: 시작/정지, 긴급정지, 종료, 원점, 카메라, 자동, 수동, 로그 (+ 다크 모드 버튼이 있으면)
-    // (+ 긴급정지 중에는 해제, 로그 창이 열려 있으면 닫기)
-    // 이 HMI 전용 지표라 다른 화면(예: Apple 앱)을 잴 때는 점수에서 뺀다
-    const isHmi = !!document.getElementById('btn-estop');
+    // 요구사항을 하는 데 꼭 필요한 조작 — 화면마다 다르다. 이 HMI 전용 지표라 다른 화면(예: Apple 앱)을 잴 때는 점수에서 뺀다
+    //   조작 화면: 시작/정지, 긴급정지, 종료, 원점, 카메라, 자동, 수동, 로그 (+ 다크 모드, 대시보드로 가기)
+    //              (+ 긴급정지 중에는 해제, 로그 창이 열려 있으면 닫기)
+    //   대시보드:  긴급정지, 조작 화면으로 가기, 다크 모드, 분당 판정 그림(키보드로 값 읽기)
+    const screen = document.body.dataset.screen || (document.getElementById('btn-estop') ? 'operator' : null);
+    const isHmi = screen === 'operator' || screen === 'dashboard';
     const shown = (id) => { const node = document.getElementById(id); return !!node && isVisible(node); };
-    const REQUIRED_CONTROLS = 8 + (shown('btn-theme') ? 1 : 0) + (shown('btn-release') ? 1 : 0) + (shown('btn-log-close') ? 1 : 0);
+    const REQUIRED_CONTROLS = screen === 'dashboard'
+      ? ['btn-estop', 'link-operator', 'btn-theme', 'trend-plot'].filter(shown).length
+      : 8 + ['btn-theme', 'link-dashboard', 'btn-release', 'btn-log-close'].filter(shown).length;
 
     const metrics = [
       { id: 1, group: '절제', name: '서체 수', value: families.size, target: '1개', basis: 'HIG 명시', score: step(families.size, [[1, 100], [2, 60], [99, 20]]) },
@@ -280,8 +292,15 @@
     const common = metrics.filter((m) => m.id !== 11);
     const totalCommon = Math.round(common.reduce((a, m) => a + m.score, 0) / common.length);
 
+    // HIG 다크 모드 7:1 목표 — 글자 중 7:1 이상인 비율 (점수에는 넣지 않음, 보고서 8.4·10장)
+    const aaa = contrastRows.length ? contrastRows.filter((r) => r.ratio >= 7).length / contrastRows.length : 1;
+    const minRatio = contrastRows.length ? Math.min(...contrastRows.map((r) => r.ratio)) : null;
+
     return {
       viewport: `${VW}x${VH}`,
+      screen,
+      aaaShare: pct(aaa) + '%',
+      minContrast: minRatio,
       total,
       totalCommon,
       metrics,

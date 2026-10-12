@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+  <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/hmi.css">
 </head>
 <body data-phase="offline">
@@ -71,11 +72,11 @@
       </div>
     </aside>
 
-    <!-- 보기: 카메라 → 생산 통계 → 맨 아래 줄(장치 연결 · 다크 모드 · 로그) -->
+    <!-- 보기: 카메라 → 생산 통계 → 맨 아래 줄(장치 연결 · 대시보드 · 다크 모드 · 로그) -->
     <main class="view">
       <section class="camera" data-i18n-aria="camera.label" aria-label="카메라 영상">
-        <canvas class="camera__media" id="camera-canvas" hidden></canvas>
-        <img class="camera__media" id="camera-img" alt="" hidden>
+        <!-- 영상 자리: 서버가 주는 방식(MJPEG·WebRTC 등)에 맞는 요소를 camera.js가 넣는다 -->
+        <div class="camera__stage" id="camera-stage"></div>
         <div class="camera__empty" id="camera-empty">
           <p data-i18n="camera.off">카메라가 꺼져 있습니다</p>
           <button type="button" class="key key--screen" id="btn-camera">
@@ -103,6 +104,10 @@
           <ul class="devices__list" id="device-list"></ul>
         </div>
         <div class="view__tools">
+          <a class="key key--quiet view__toggle" id="link-dashboard" href="dashboard.html">
+            <svg class="key__icon" aria-hidden="true"><use href="#i-board"></use></svg>
+            <span data-i18n="nav.dashboard">대시보드</span>
+          </a>
           <button type="button" class="key key--quiet view__toggle" id="btn-theme" aria-pressed="false">
             <svg class="key__icon" aria-hidden="true"><use href="#i-moon"></use></svg>
             <span data-i18n="theme.dark">다크 모드</span>
@@ -153,15 +158,22 @@
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
     <symbol id="i-log" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10"/><path d="M4.5 6.5h.5M4.5 12h.5M4.5 17.5h.5" stroke-width="2.5"/></g></symbol>
     <symbol id="i-power" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3.5v8"/><path d="M6.6 7.2a7.5 7.5 0 1 0 10.8 0"/></g></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="9"/><rect x="13.5" y="3.5" width="7" height="5"/><rect x="13.5" y="11.5" width="7" height="9"/><rect x="3.5" y="15.5" width="7" height="5"/></g></symbol>
   </svg>
 
-  <!-- 원점값 → 문구 → 서버 연결 → 화면 순서로 읽습니다 (설정은 <head>에서 먼저). 모듈 없이 파일을 더블클릭해도 열리도록 일반 스크립트를 씁니다. -->
+  <!-- 설정 → 문구 → 서버 연결 → 화면 순서로 읽습니다 (config.js는 <head>에서 먼저). 모듈 없이 파일을 더블클릭해도 열리도록 일반 스크립트를 씁니다. -->
   <script src="config/home-position.js"></script>
+  <script src="config/robot.js"></script>
   <script src="js/i18n/ko.js"></script>
   <script src="js/i18n.js"></script>
+  <script src="js/adapter.js"></script>
+  <script src="js/transport.js"></script>
   <script src="js/mock-server.js"></script>
+  <script src="js/mock-hub.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/store.js"></script>
   <script src="js/camera-sim.js"></script>
+  <script src="js/camera.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

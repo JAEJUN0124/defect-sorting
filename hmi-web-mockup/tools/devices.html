@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>장치 점검</title>
+  <script src="../js/config.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/tools.css">
+</head>
+<body>
+  <div class="tool">
+    <header class="tool__head">
+      <div>
+        <h1 class="tool__title">장치 점검</h1>
+        <p class="tool__lead">로봇팔 서보, USB 카메라, 아두이노를 이 PC에서 직접 확인합니다. 설치·고장 확인용이며 운영 화면이 아닙니다.
+          Chrome 또는 Edge에서 <code>http://localhost</code>로 열어야 USB 포트를 쓸 수 있습니다.</p>
+      </div>
+      <a class="key key--quiet btn" href="../index.html">조작 화면</a>
+    </header>
+
+    <!-- 1. 로봇팔 서보 -->
+    <section class="panel-sec" aria-labelledby="servo-title">
+      <h2 id="servo-title">로봇팔 서보 (USB로 직접 읽기)</h2>
+      <p class="hint">서보 드라이버 보드를 이 PC에 꽂고 DC 어댑터 전원을 켠 뒤 포트를 고르세요. 읽기만 합니다.
+        모터 ID 설정·캘리브레이션·움직이기는 서버 PC에서 LeRobot 명령(lerobot-setup-motors, lerobot-calibrate)으로 합니다.
+        서버가 같은 포트를 쓰고 있으면 열리지 않으니 서버를 끈 상태에서 쓰세요.</p>
+      <div class="row">
+        <label class="field">연결한 팔
+          <select id="servo-arm">
+            <option value="arm">로봇팔(팔로워) — 12V 어댑터</option>
+            <option value="leader">리더암 — 7.5V 어댑터</option>
+          </select>
+        </label>
+        <button type="button" class="key btn" id="servo-connect">USB 포트 고르기</button>
+        <button type="button" class="key key--quiet btn" id="servo-fake">가짜 서보로 시험</button>
+        <button type="button" class="key key--quiet btn view__toggle" id="servo-live" aria-pressed="false" disabled>계속 읽기</button>
+        <button type="button" class="key key--quiet btn" id="servo-close" disabled>연결 끊기</button>
+      </div>
+      <p class="hint" id="servo-port" aria-live="polite"></p>
+      <ul class="checks" id="servo-checks" aria-live="polite"></ul>
+      <div class="tbl-wrap">
+        <table class="tbl" id="servo-table" hidden>
+          <thead>
+            <tr>
+              <th scope="col">ID</th><th scope="col">관절</th><th scope="col">모델</th>
+              <th scope="col" class="num">위치</th><th scope="col" class="num">원시값</th><th scope="col">범위(최소–최대)</th>
+              <th scope="col" class="num">전압</th><th scope="col" class="num">온도</th><th scope="col" class="num">부하</th>
+              <th scope="col" class="num">전류</th><th scope="col">힘</th><th scope="col">상태</th>
+            </tr>
+          </thead>
+          <tbody id="servo-rows"></tbody>
+        </table>
+      </div>
+      <div class="row">
+        <button type="button" class="key btn" id="servo-home" disabled>지금 자세를 원점값으로</button>
+        <p class="hint">로봇팔을 원점 자세로 둔 채 누르면 config/home-position.js에 넣을 내용을 만듭니다 (LeRobot과 같은 식으로 각도를 셈).</p>
+      </div>
+      <pre class="out" id="servo-home-out" hidden></pre>
+    </section>
+
+    <!-- 2. 카메라 -->
+    <section class="panel-sec" aria-labelledby="cam-title">
+      <h2 id="cam-title">카메라 (이 PC에 꽂힌 USB 카메라)</h2>
+      <p class="hint">키트의 720p USB 카메라를 확인하고, HMI가 이 PC의 카메라를 직접 띄울 때(config.js cameras.transport = 'local')
+        어느 카메라가 어느 자리인지 정합니다. 서버가 같은 카메라를 열고 있으면 열리지 않을 수 있습니다.</p>
+      <div class="row">
+        <button type="button" class="key btn" id="cam-list">카메라 찾기</button>
+        <label class="field">카메라 <select id="cam-device"></select></label>
+        <label class="field">자리(카메라 id)
+          <select id="cam-slot">
+            <option value="top">top — 위 카메라</option>
+            <option value="close">close — 근접 카메라</option>
+            <option value="side">side — 옆 카메라</option>
+            <option value="front">front — 앞 카메라</option>
+            <option value="wrist">wrist — 손목 카메라</option>
+            <option value="main">main — 카메라 한 대</option>
+          </select>
+        </label>
+        <button type="button" class="key key--quiet btn" id="cam-save" disabled>이 자리로 저장</button>
+        <button type="button" class="key key--quiet btn" id="cam-fake">가짜 카메라로 시험</button>
+      </div>
+      <div class="preview"><video id="cam-video" muted playsinline></video></div>
+      <p class="hint" id="cam-info" aria-live="polite"></p>
+      <pre class="out" id="cam-saved"></pre>
+
+      <h2>서버 영상 주소 시험</h2>
+      <p class="hint">서버 담당이 알려 준 영상 주소가 HMI에서 열리는지 봅니다 (판정 화면과 같은 코드 camera.js로 엽니다).</p>
+      <div class="row">
+        <label class="field field--wide">영상 주소 <input id="stream-url" type="url" placeholder="http://192.168.0.10:8000/api/camera/top/stream"></label>
+        <label class="field">방식
+          <select id="stream-transport">
+            <option value="mjpeg">MJPEG</option>
+            <option value="snapshot">JPEG 한 장씩</option>
+            <option value="ws">웹소켓 JPEG</option>
+            <option value="webrtc">WebRTC (WHEP)</option>
+            <option value="video">video (MP4·HLS)</option>
+          </select>
+        </label>
+        <button type="button" class="key btn" id="stream-open">열기</button>
+        <button type="button" class="key key--quiet btn" id="stream-close">닫기</button>
+      </div>
+      <div class="preview"><div class="camera__stage" id="stream-stage"></div></div>
+      <p class="hint" id="stream-state" aria-live="polite"></p>
+    </section>
+
+    <!-- 3. 시리얼 콘솔 -->
+    <section class="panel-sec" aria-labelledby="ser-title">
+      <h2 id="ser-title">시리얼 콘솔 (아두이노 컨베이어 등)</h2>
+      <p class="hint">아두이노 스케치가 주고받는 글자를 직접 봅니다. 보낸 글자에 따라 컨베이어가 움직일 수 있으니 주변을 확인하고 보내세요.
+        서버가 같은 포트를 쓰고 있으면 열리지 않습니다.</p>
+      <div class="row">
+        <label class="field">속도(bps)
+          <select id="ser-baud">
+            <option>9600</option><option>19200</option><option>38400</option><option>57600</option>
+            <option selected>115200</option><option>250000</option><option>1000000</option>
+          </select>
+        </label>
+        <button type="button" class="key btn" id="ser-connect">USB 포트 고르기</button>
+        <button type="button" class="key key--quiet btn" id="ser-close" disabled>연결 끊기</button>
+      </div>
+      <div class="row">
+        <label class="field field--wide">보낼 글자 <input id="ser-input" autocomplete="off"></label>
+        <label class="field">줄 끝
+          <select id="ser-eol">
+            <option value="\n">줄바꿈(\n)</option>
+            <option value="\r\n">\r\n</option>
+            <option value="">없음</option>
+          </select>
+        </label>
+        <button type="button" class="key btn" id="ser-send" disabled>보내기</button>
+      </div>
+      <pre class="out" id="ser-out" aria-live="polite"></pre>
+    </section>
+  </div>
+
+  <script src="../config/home-position.js"></script>
+  <script src="../config/robot.js"></script>
+  <script src="../js/i18n/ko.js"></script>
+  <script src="../js/i18n.js"></script>
+  <script src="../js/adapter.js"></script>
+  <script>window.HmiApi = { adapter: window.HmiAdapter.create() }; // camera.js가 웹소켓 JPEG 메시지를 읽을 때 쓴다</script>
+  <script src="../js/camera.js"></script>
+  <script src="../js/feetech.js"></script>
+  <script src="devices.js"></script>
+</body>
+</html>

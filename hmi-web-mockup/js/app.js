@@ -1,13 +1,16 @@
-// 화면 동작 — 서버 상태를 받아 그리고, 버튼 누름을 서버 명령으로 바꿉니다.
+// 조작 화면 — 서버 상태를 받아 그리고, 버튼 누름을 서버 명령으로 바꿉니다.
+// 서버 연결과 상태 모으기는 store.js, 영상은 camera.js가 맡습니다.
 (function () {
   const cfg = window.HMI_CONFIG;
   const home = window.HMI_HOME_POSITION;
+  const robot = window.HMI_ROBOT || {};
   const api = window.HmiApi;
+  const store = window.HmiStore;
   const { t } = window.I18N;
   const $ = (id) => document.getElementById(id);
 
-  const DEVICES = ['server', 'conveyor', 'arm', 'leader', 'camera'];
-  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', shutdown: 'amber' };
+  const DEVICE_ORDER = ['conveyor', 'arm', 'leader'];
+  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', shutdown: 'amber', unknown: 'amber' };
   const BLINKING = ['connecting', 'starting', 'stopping', 'homing', 'shutdown'];
   // 로그 버튼의 빨간 점을 켜는 기록. 불량 검출은 정상 공정에서 늘 생기는 일이라 통계로 보고 점은 켜지 않는다
   const NOTIFY_LEVELS = ['warning', 'alarm'];
@@ -21,73 +24,76 @@
     modeKeys: Array.from(document.querySelectorAll('.key--mode')), modeNote: $('mode-note'),
     joints: $('joints'), jointsList: $('joints-list'),
     exit: $('btn-exit'), exitNote: $('exit-note'),
-    canvas: $('camera-canvas'), img: $('camera-img'), cameraEmpty: $('camera-empty'),
+    cameraStage: $('camera-stage'), cameraEmpty: $('camera-empty'),
     camera: $('btn-camera'), cameraLabel: $('camera-btn-label'), cameraNote: $('camera-note'), cameraOff: $('btn-camera-off'),
     total: $('stat-total'), good: $('stat-good'), defect: $('stat-defect'), rate: $('stat-rate'),
     logBtn: $('btn-log'), logWin: $('logwin'), logClose: $('btn-log-close'), logList: $('log-list'), logEmpty: $('log-empty'),
-    logDot: $('log-dot'), logDotText: $('log-dot-text'), themeBtn: $('btn-theme'),
+    logDot: $('log-dot'), logDotText: $('log-dot-text'), themeBtn: $('btn-theme'), dashLink: $('link-dashboard'),
     devices: $('devices'), deviceList: $('device-list'),
     dlg: $('dlg'), dlgTitle: $('dlg-title'), dlgBody: $('dlg-body'), dlgConfirm: $('dlg-confirm'), dlgCancel: $('dlg-cancel'),
     ended: $('ended'),
   };
 
-  // S: 서버가 알려 준 상태 / ui: 화면에서만 쓰는 상태
-  let S = null;
-  let online = false;
-  let everConnected = false;
-  let lastMessageAt = 0;
-  const ui = { busy: new Set(), notes: {}, exiting: false, ended: false, leader: null, exitTimer: 0 };
+  const ui = { busy: new Set(), notes: {}, exiting: false, ended: false, exitTimer: 0, connectedOnce: false };
   const jointCells = {};
-  const deviceKeys = {};
-  const sim = new window.CameraSim(el.canvas, { good: t('result.good'), defect: t('result.defect') });
+  let deviceKeys = {};
+  let deviceSig = '';
+  const sim = new window.CameraSim({ good: t('result.good'), defect: t('result.defect') });
+  const camera = new window.CameraView(el.cameraStage, { sim });
 
-  // ---------- 서버 연결 ----------
+  const S = () => store.state.status;
+  const online = () => store.state.online;
 
-  function setOnline(next) {
-    if (online === next) return;
-    online = next;
-    lastMessageAt = Date.now();
-    if (everConnected) addLog({ code: next ? 'server_back' : 'server_lost', level: next ? 'info' : 'warning', at: new Date().toISOString() });
-    if (next) everConnected = true;
-    render();
-  }
+  // ---------- 서버 메시지 ----------
 
-  function handle(msg) {
-    const data = msg.data || {};
-    switch (msg.type) {
+  store.subscribe((kind, data) => {
+    switch (kind) {
+      case 'online':
+        if (ui.connectedOnce) addLog({ code: data ? 'server_back' : 'server_lost', level: data ? 'info' : 'warning', at: new Date().toISOString() });
+        if (data) ui.connectedOnce = true;
+        render();
+        break;
       case 'status':
-        S = data;
         clearSolvedNotes();
         render();
         break;
+      case 'info':
+        render();
+        break;
       case 'inspection':
-        if (S) S.stats = data.stats;
-        if (S && S.camera.streaming) sim.mark(data.result);
+        if (camera.current && camera.current.source.transport === 'mock') sim.mark(data.result);
+        camera.showInspection(data);
         renderStats();
         break;
       case 'event':
         addLog(data);
         break;
       case 'joints':
-        if (data.source === 'leader') { ui.leader = data.angles; renderJoints(); }
+        if (data.source === 'leader') renderJoints();
+        break;
+      case 'frame':
+        camera.pushFrame(data);
         break;
       case 'shutdown_complete':
         finishExit();
         break;
       default:
-        break; // heartbeat, home_complete
+        break;
     }
-  }
+  });
 
   // ---------- 그리기 ----------
 
   function phase() {
     if (ui.exiting) return 'shutdown';
-    if (!everConnected) return 'connecting';
-    if (!online || !S) return 'offline';
-    if (S.estop) return 'estop';
-    return S.line; // stopped · starting · running · stopping · homing
+    if (!store.state.everConnected) return 'connecting';
+    if (!online() || !S()) return 'offline';
+    if (S().estop) return 'estop';
+    if (S().line === 'unknown') return 'unknown';
+    return S().line; // stopped · starting · running · stopping · homing
   }
+
+  const modeKey = () => (S() && S().mode === 'manual' ? 'manual' : 'auto');
 
   function render() {
     const p = phase();
@@ -101,9 +107,14 @@
   }
 
   function renderState(p) {
+    const fault = p === 'stopped' && S().fault;
     el.stateWord.textContent = t('state.' + p);
-    el.stateDetail.textContent = (p === 'stopped' || p === 'running') ? t('detail.' + p + '.' + S.mode) : t('detail.' + p);
-    el.stateLamp.dataset.color = LAMP[p] || 'off';
+    if (fault) el.stateDetail.textContent = t('detail.fault', { fault: store.faultText(S().fault) });
+    else if (p === 'stopped' || p === 'running') el.stateDetail.textContent = t('detail.' + p + '.' + modeKey());
+    else if (p === 'unknown') el.stateDetail.textContent = t('detail.unknown', { state: S().lineRaw });
+    else el.stateDetail.textContent = t('detail.' + p);
+    // 고장으로 멈춘 정지는 노랑(IEC 60073: 이상 상태)
+    el.stateLamp.dataset.color = fault ? 'amber' : LAMP[p] || 'off';
     el.stateLamp.dataset.blink = String(BLINKING.includes(p));
   }
 
@@ -119,7 +130,8 @@
     el.estopLabel.textContent = t(latched ? 'estop.latched' : 'estop.press');
     el.release.hidden = !latched;
     el.release.disabled = ui.busy.has('release');
-    setNote(el.estopNote, p === 'offline' ? { text: t('estop.offline'), kind: 'error' } : (ui.notes.estop || ui.notes.release));
+    const offlineNote = { text: t(robot.hardwareStop === 'button' ? 'estop.offline.button' : 'estop.offline.dc'), kind: 'error' };
+    setNote(el.estopNote, p === 'offline' ? offlineNote : (ui.notes.estop || ui.notes.release));
 
     // 시작 / 정지 — 하나의 키가 지금 할 수 있는 동작을 보여 준다
     el.runLabel.textContent = t(running ? 'run.stop' : 'run.start');
@@ -133,7 +145,7 @@
 
     // 운전 모드 — 정지 상태에서만
     el.modeKeys.forEach((key) => {
-      key.setAttribute('aria-pressed', String(!!S && S.mode === key.dataset.mode));
+      key.setAttribute('aria-pressed', String(!!S() && S().mode === key.dataset.mode));
       key.disabled = !stopped || ui.busy.has('mode');
     });
     setNote(el.modeNote, ui.notes.mode);
@@ -143,33 +155,22 @@
   }
 
   function renderCamera() {
-    const streaming = !!(S && online && S.camera.streaming);
+    const st = S();
+    const src = st && online() ? store.cameraSource(store.primaryCamera()) : null;
+    const streaming = !!(src && src.streaming);
     const busy = ui.busy.has('camera');
     el.cameraEmpty.hidden = streaming;
-    el.cameraOff.hidden = !streaming;
+    el.cameraOff.hidden = !streaming || src.transport === 'local'; // 이 PC 카메라는 서버가 켜고 끄지 않는다
     el.cameraOff.disabled = busy;
-    el.camera.disabled = !online || !S || busy || ui.exiting;
+    el.camera.disabled = !online() || !st || busy || ui.exiting;
     el.cameraLabel.textContent = t(busy ? 'camera.connecting' : 'camera.connect');
     setNote(el.cameraNote, ui.notes.camera);
-
-    if (cfg.useMock) {
-      el.canvas.hidden = !streaming;
-      if (streaming) { sim.setBelt(S.line === 'running'); sim.start(); } else sim.stop();
-      return;
-    }
-    // 실제 서버: MJPEG 주소를 그대로 <img>에 건다
-    el.img.hidden = !streaming;
-    if (streaming && el.img.dataset.src !== S.camera.url) {
-      el.img.src = new URL(S.camera.url, cfg.apiBase).href;
-      el.img.dataset.src = S.camera.url;
-    } else if (!streaming && el.img.dataset.src) {
-      el.img.removeAttribute('src');
-      delete el.img.dataset.src;
-    }
+    sim.setBelt(!!st && st.line === 'running');
+    camera.set(streaming ? src : null);
   }
 
   function renderStats() {
-    const st = (S && S.stats) || { total: 0, good: 0, defect: 0 };
+    const st = (S() && S().stats) || { total: 0, good: 0, defect: 0 };
     el.total.textContent = st.total.toLocaleString();
     el.good.textContent = st.good.toLocaleString();
     el.defect.textContent = st.defect.toLocaleString();
@@ -177,21 +178,34 @@
   }
 
   function renderJoints() {
-    const show = !!S && online && S.mode === 'manual';
+    const show = !!S() && online() && S().mode === 'manual';
     el.joints.hidden = !show;
     if (!show) return;
+    const leader = store.state.joints.leader;
     home.joints.forEach((j) => {
-      const v = ui.leader ? ui.leader[j.id] : undefined;
-      jointCells[j.id].textContent = typeof v === 'number' ? Math.round(v) + j.unit : '–';
+      const v = leader && leader.angles ? leader.angles[j.id] : undefined;
+      const unit = leader && leader.units && leader.units[j.id] === 'pct' ? '%' : '°';
+      jointCells[j.id].textContent = typeof v === 'number' ? Math.round(v) + unit : '–';
     });
+  }
+
+  // 서버가 알려 준 장치 목록을 그대로 보인다 (서버 → 컨베이어 → 로봇팔 → 리더암 → 카메라들(서버 목록 순) → 그 밖)
+  function deviceIds() {
+    const ids = Object.keys((S() && S().devices) || {});
+    const cams = store.cameraIds().map((c) => 'camera_' + c).filter((d) => ids.includes(d));
+    const first = DEVICE_ORDER.filter((d) => ids.includes(d)).concat(cams);
+    const ordered = first.concat(ids.filter((d) => !first.includes(d)).sort());
+    return ['server'].concat(ordered.length ? ordered : DEVICE_ORDER);
   }
 
   function renderDevices() {
     el.devices.hidden = !cfg.devMode;
     if (!cfg.devMode) return;
-    DEVICES.forEach((name) => {
+    const ids = deviceIds();
+    if (ids.join() !== deviceSig) { buildDevices(ids); deviceSig = ids.join(); }
+    ids.forEach((name) => {
       const key = deviceKeys[name];
-      const connected = name === 'server' ? online : !!(S && S.devices[name] === 'connected');
+      const connected = name === 'server' ? online() : !!(S() && S().devices[name] === 'connected');
       key.lamp.dataset.color = connected ? 'green' : 'off';
       key.state.hidden = connected; // 색만으로 알리지 않도록 끊김은 글자로도 쓴다
     });
@@ -201,7 +215,7 @@
   function clearSolvedNotes() {
     Object.keys(ui.notes).forEach((key) => {
       const missing = ui.notes[key].missing;
-      if (missing && missing.every((d) => S.devices[d] === 'connected')) delete ui.notes[key];
+      if (missing && missing.every((d) => S().devices[d] === 'connected')) delete ui.notes[key];
     });
   }
 
@@ -266,29 +280,20 @@
     const li = document.createElement('li');
     li.className = 'log__item';
     li.dataset.level = evt.level || 'info';
+    const at = evt.at || new Date().toISOString();
     const time = document.createElement('time');
     time.className = 'log__time';
-    time.dateTime = evt.at;
-    time.textContent = clock(evt.at);
+    time.dateTime = at;
+    time.textContent = clock(at);
     const msg = document.createElement('span');
     msg.className = 'log__msg';
-    msg.textContent = eventText(evt);
+    msg.textContent = store.eventText(evt);
     li.append(time, msg);
     el.logList.prepend(li);
     while (el.logList.children.length > cfg.logLimit) el.logList.lastElementChild.remove();
     el.logEmpty.hidden = true;
     if (!el.logWin.open && NOTIFY_LEVELS.includes(li.dataset.level) && !NOTIFY_SKIP.includes(evt.code)) setUnread(true);
   }
-
-  function eventText(evt) {
-    const p = Object.assign({}, evt.params);
-    if (p.device) p.device = t('device.' + p.device);
-    if (Array.isArray(p.devices)) p.devices = deviceNames(p.devices);
-    if (p.mode) p.mode = t('mode.' + p.mode);
-    return t('event.' + evt.code, p);
-  }
-
-  const deviceNames = (list) => list.map((d) => t('device.' + d)).join(', ');
 
   function clock(iso) {
     const d = new Date(iso);
@@ -313,12 +318,7 @@
     }
   }
 
-  function errorText(err) {
-    const code = err && err.code;
-    if (code === 'DEVICES_NOT_READY') return t('error.DEVICES_NOT_READY', { devices: deviceNames(err.details.missing || []) });
-    const known = t('error.' + code);
-    return known === 'error.' + code ? t('error.unknown', { code }) : known;
-  }
+  const errorText = store.errorText;
 
   function confirmDialog(kind) {
     return new Promise((resolve) => {
@@ -340,13 +340,13 @@
     if (ui.ended) return;
     clearTimeout(ui.exitTimer);
     ui.ended = true;
-    sim.stop();
+    camera.set(null);
     setLogOpen(false);
     el.ended.hidden = false; // 브라우저는 스크립트가 연 창만 닫을 수 있어 종료 화면을 남긴다
   }
 
   el.estop.addEventListener('click', () => {
-    if (S && S.estop) return;
+    if (S() && S().estop) return;
     // 긴급정지는 다른 요청을 기다리지 않고 바로 보낸다
     api.estop()
       .then(() => { delete ui.notes.estop; render(); })
@@ -361,18 +361,18 @@
   });
 
   el.run.addEventListener('click', () => {
-    const running = S && S.line === 'running';
+    const running = S() && S().line === 'running';
     act('run', () => (running ? api.stop() : api.start()));
   });
 
   el.home.addEventListener('click', () => {
     const angles = Object.fromEntries(home.joints.map((j) => [j.id, j.angle]));
-    act('home', () => api.home(angles));
+    act('home', () => api.home(angles, home.unit));
   });
 
   el.modeKeys.forEach((key) => key.addEventListener('click', () => {
     const mode = key.dataset.mode;
-    if (!S || S.mode === mode) return;
+    if (!S() || S().mode === mode) return;
     act('mode', () => api.setMode(mode));
   }));
 
@@ -421,8 +421,10 @@
     });
   }
 
-  function buildDevices() {
-    DEVICES.forEach((name) => {
+  function buildDevices(ids) {
+    el.deviceList.textContent = '';
+    deviceKeys = {};
+    ids.forEach((name) => {
       const li = document.createElement('li');
       const key = document.createElement('button');
       key.type = 'button';
@@ -432,12 +434,12 @@
       const lamp = document.createElement('span');
       lamp.className = 'lamp';
       const label = document.createElement('span');
-      label.textContent = t('device.' + name);
+      label.textContent = name === 'server' ? t('device.server') : store.deviceName(name);
       const state = document.createElement('span');
       state.textContent = t('devices.disconnected');
       key.append(lamp, label, state);
       key.addEventListener('click', () => {
-        const connected = name === 'server' ? online : !!(S && S.devices[name] === 'connected');
+        const connected = name === 'server' ? online() : !!(S() && S().devices[name] === 'connected');
         api.mock.setDevice(name, !connected);
       });
       li.appendChild(key);
@@ -446,23 +448,11 @@
     });
   }
 
+  el.dashLink.href = 'dashboard.html' + location.search; // ?dev=0, ?theme= 같은 주소 설정을 그대로 넘긴다
+
   window.I18N.apply();
   buildJoints();
-  buildDevices();
   renderTheme();
   render();
-
-  api.connect({
-    onOpen() { setOnline(true); },
-    onClose() { setOnline(false); },
-    onMessage(msg) {
-      lastMessageAt = Date.now();
-      if (!online) setOnline(true);
-      handle(msg);
-    },
-  });
-
-  setInterval(() => {
-    if (online && Date.now() - lastMessageAt > cfg.heartbeatTimeoutMs) setOnline(false);
-  }, 1000);
+  store.start();
 })();

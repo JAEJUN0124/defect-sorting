@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>서버 점검</title>
+  <script src="../js/config.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/tools.css">
+</head>
+<body>
+  <div class="tool">
+    <header class="tool__head">
+      <div>
+        <h1 class="tool__title">서버 점검</h1>
+        <p class="tool__lead">서버 담당이 만든 서버를 HMI가 제대로 읽는지 봅니다. 서버 정보·상태를 묻고(GET) 실시간 메시지를 듣기만 합니다.
+          시작·정지 같은 명령은 보내지 않습니다. 결과에 따라 바꿀 설정은 js/config.js에 넣으세요 (대응표: docs/server-cases.md).</p>
+      </div>
+      <a class="key key--quiet btn" href="../index.html">조작 화면</a>
+    </header>
+
+    <section class="panel-sec" aria-labelledby="addr-title">
+      <h2 id="addr-title">주소</h2>
+      <div class="row">
+        <label class="field field--wide">API 주소 <input id="api" type="url"></label>
+        <label class="field field--wide">실시간 주소 (WebSocket) <input id="ws" type="url"></label>
+      </div>
+      <div class="row">
+        <label class="field">실시간 방식
+          <select id="push">
+            <option value="auto">자동 찾기</option>
+            <option value="ws">WebSocket</option>
+            <option value="socketio">Socket.IO</option>
+            <option value="sse">SSE</option>
+            <option value="poll">폴링(상태만)</option>
+          </select>
+        </label>
+        <label class="field field--wide">SSE 주소 (SSE일 때) <input id="sse" type="url"></label>
+        <label class="field">듣는 시간
+          <select id="listen">
+            <option value="5">5초</option>
+            <option value="10" selected>10초</option>
+            <option value="30">30초</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <button type="button" class="key btn" id="run">점검 시작</button>
+        <button type="button" class="key key--quiet btn" id="run-mock">가짜 서버로 시험</button>
+      </div>
+      <p class="hint" id="progress" aria-live="polite"></p>
+    </section>
+
+    <section class="panel-sec" aria-labelledby="result-title">
+      <h2 id="result-title">결과</h2>
+      <ul class="checks" id="checks"></ul>
+      <h2>config.js에 넣을 값</h2>
+      <pre class="out" id="config-out">점검을 마치면 여기에 나옵니다.</pre>
+      <h2>받은 실시간 메시지</h2>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th scope="col">종류(HMI 이름)</th><th scope="col" class="num">개수</th><th scope="col">서버가 쓴 이름</th><th scope="col">마지막 내용</th></tr></thead>
+          <tbody id="msg-rows"></tbody>
+        </table>
+      </div>
+      <h2>HMI가 알아서 맞춘 형식</h2>
+      <ul class="checks" id="notes"></ul>
+    </section>
+  </div>
+
+  <script src="../config/robot.js"></script>
+  <script src="../js/adapter.js"></script>
+  <script src="../js/transport.js"></script>
+  <script src="../js/mock-server.js"></script>
+  <script src="server-check.js"></script>
+</body>
+</html>

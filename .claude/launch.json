@@ -4,7 +4,7 @@
     {
       "name": "hmi-web-mockup",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5173", "--directory", "hmi-web-mockup"],
+      "runtimeArgs": ["hmi-web-mockup/tools/dev-server.py", "5173"],
       "port": 5173
     }
   ]

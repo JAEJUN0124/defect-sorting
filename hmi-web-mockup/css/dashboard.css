@@ -1,0 +1,397 @@
+/* =========================================================
+   불량 선별 대시보드 — 감시반
+   조작 화면이 제어함의 누름버튼 쪽이라면, 대시보드는 같은 제어함의 계기 쪽이다.
+   눈금·계수기·화면만 있고, 누를 수 있는 것은 긴급정지와 화면 이동·테마뿐이다.
+   색·글자·간격 토큰은 base.css를 그대로 쓴다.
+   ========================================================= */
+
+/* 긴급정지 중에는 화면 맨 위에 빨간 띠 (조작 화면과 같다) */
+.alarm-bar {
+  display: none;
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 6px;
+  background: var(--c-red);
+  z-index: 10;
+}
+[data-phase="estop"] .alarm-bar { display: block; }
+
+.db {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ---------- 윗판: 상태 → 긴급정지 → 계수기 ---------- */
+
+.rail {
+  position: sticky;           /* 아래를 넘겨 봐도 긴급정지는 늘 보인다 */
+  top: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-4) var(--s-6);
+  padding: var(--s-4) var(--s-5);
+  background: var(--c-plate);
+}
+
+.rail__state { display: grid; gap: var(--s-1); min-width: 0; }
+.rail__word {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+[data-phase="estop"] .rail__word { color: var(--c-signal-red); }
+.rail__detail {
+  min-height: 3em;            /* 두 줄 자리를 미리 잡아 문구가 바뀌어도 판 높이가 그대로 */
+  color: var(--c-ink-2);
+}
+.rail__detail[data-kind="error"] { color: var(--c-amber-text); font-weight: 600; }
+
+/* 긴급정지: 조작 화면과 같은 노란 판 위 빨간 버섯머리, 판 높이에 맞춰 작게 */
+.stop {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  min-height: 80px;
+  padding: var(--s-3) var(--s-5) var(--s-3) var(--s-3);
+  background: var(--c-yellow);
+  border: 0;
+  border-radius: var(--r-key);
+  color: var(--c-on-yellow);
+  font-size: var(--fs-l);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.stop__head {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--c-red);
+  transition: transform var(--t-fast);
+}
+.stop:active .stop__head,
+.stop[aria-pressed="true"] .stop__head {
+  background: var(--c-red-down);
+  transform: scale(.94);
+}
+.stop:disabled {
+  background: var(--c-line);
+  color: var(--c-ink-2);
+  cursor: not-allowed;
+}
+.stop:disabled .stop__head { background: var(--c-ink-3); }
+
+/* 계수기: 카드 없이 한 줄. 늘 바뀌는 값이라 숫자 폭을 고정해 흔들리지 않게 */
+.tally {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.tally dt { font-size: var(--fs-s); color: var(--c-ink-2); }
+.tally dd {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- 본문 ---------- */
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 456px);
+  gap: var(--s-5);
+  min-height: 0;
+  padding: var(--s-4) var(--s-5);
+}
+
+.body__main,
+.body__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.sec__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-4);
+  margin-bottom: var(--s-2);
+}
+.sec__title { font-size: var(--fs-m); font-weight: 600; }
+.sec__title--alone { margin-bottom: var(--s-2); }
+.sec__note { font-size: var(--fs-s); color: var(--c-ink-2); }
+
+.empty { padding: var(--s-2) 0; color: var(--c-ink-2); font-size: var(--fs-s); }
+
+/* ---------- 카메라 ---------- */
+
+/* 카메라 수와 상관없이 칸 수를 고정해(2대 이하 2칸, 3대 3칸) 세로 높이가 늘 같다 — 한 대뿐이어도 화면 밖으로 밀리지 않게 */
+.cams {
+  display: grid;
+  grid-template-columns: repeat(var(--cam-cols, 2), minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.cam { display: grid; gap: var(--s-2); min-width: 0; margin: 0; }
+.cam__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.cam__fps { font-size: var(--fs-s); color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.cam__screen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--c-screen);
+  border: 1px solid var(--c-screen-edge);
+  border-radius: var(--r-screen);
+  overflow: hidden;
+}
+.cam__empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--s-1);
+  padding: var(--s-4);
+  color: var(--c-on-screen);
+  font-size: var(--fs-s);
+  text-align: center;
+}
+
+/* ---------- 분당 판정 ---------- */
+
+.legend {
+  display: flex;
+  gap: var(--s-4);
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-s);
+  color: var(--c-ink-2);
+}
+.legend li { display: inline-flex; align-items: center; gap: var(--s-2); }
+.legend__key { width: 12px; height: 12px; }
+.legend__key--good { background: var(--c-chart-good); }
+.legend__key--defect { background: var(--c-chart-defect); }
+
+.trend__plot { position: relative; height: 120px; }
+.trend__svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.trend__svg text { fill: var(--c-ink-2); font: 400 var(--fs-s) var(--font); font-variant-numeric: tabular-nums; }
+.trend__grid { stroke: var(--c-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.trend__base { stroke: var(--c-line); stroke-width: 1; shape-rendering: crispEdges; }
+.trend__good { fill: var(--c-chart-good); }
+.trend__defect { fill: var(--c-chart-defect); }
+.trend__hover { fill: var(--c-grid); }
+
+/* 막대 위 풀이: 값이 먼저, 이름은 뒤 */
+.tip {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  min-width: 132px;
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-key);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-key);
+  font-size: var(--fs-s);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.tip__time { color: var(--c-ink-2); }
+.tip__row { display: flex; align-items: center; gap: var(--s-2); }
+.tip__row b { font-weight: 600; min-width: 2.5em; text-align: right; }
+.tip__key { width: 12px; height: 2px; }
+.tip__key--good { background: var(--c-chart-good); }
+.tip__key--defect { background: var(--c-chart-defect); }
+
+/* ---------- 표 (최근 판정 · 서보) ---------- */
+
+.grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-s);
+  font-variant-numeric: tabular-nums;
+}
+.grid-table th {
+  padding: 0 var(--s-3) var(--s-1) 0;
+  border-bottom: 1px solid var(--c-line);
+  color: var(--c-ink-2);
+  font-weight: 400;
+  text-align: left;
+}
+.grid-table td,
+.grid-table tbody th {
+  height: 24px;               /* 14px 글자 한 줄 + 위아래 여유. 1440×900에서 스크롤 없이 들어가는 높이 */
+  padding: 0 var(--s-3) 0 0;
+  border-bottom: 1px solid var(--c-line);
+  text-align: left;
+}
+.grid-table tbody th { color: var(--c-ink); font-weight: 400; }
+.grid-table .num { text-align: right; }
+.grid-table :is(th, td):last-child { padding-right: 0; }
+.is-defect { color: var(--c-amber-text); font-weight: 600; }
+
+/* ---------- 로봇팔 ---------- */
+
+.arms { display: grid; gap: var(--s-4); }
+.arm__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+}
+.arm__supply { font-size: var(--fs-s); color: var(--c-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.arm__supply b { color: var(--c-ink); font-weight: 600; }
+.arm__supply[data-level="warning"] b { color: var(--c-amber-text); }
+.arm__supply[data-level="alarm"] b { color: var(--c-signal-red); }
+
+.servo thead th:first-child { width: 104px; }
+.servo thead th:nth-child(2) { width: 56px; }
+.servo thead th:last-child { width: 48px; }
+/* 지시계와 값을 한 칸에: 눈금은 남는 폭, 값은 고정 폭 */
+.servo__cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: var(--s-2);
+}
+.servo .val { text-align: right; }
+.servo__flag { margin-left: var(--s-2); font-weight: 600; }
+.servo :is(.val, .servo__flag, td)[data-level="warning"] { color: var(--c-amber-text); font-weight: 600; }
+.servo :is(.val, .servo__flag, td)[data-level="alarm"] { color: var(--c-signal-red); font-weight: 600; }
+
+/* ISA-101 아날로그 지시계: 눈금 바탕 + 정상 범위 띠 + 경고 눈금 + 바늘.
+   평소에는 회색만, 바늘이 범위를 벗어나면 그때만 노랑(경고)·빨강(비상) */
+.meter {
+  position: relative;
+  display: block;
+  height: 16px;
+  --v: 50%;
+}
+.meter::before {
+  content: '';
+  position: absolute;
+  inset: 6px 0 auto 0;
+  height: 4px;
+  background: var(--c-track);
+}
+.meter__band {
+  position: absolute;
+  top: 6px;
+  left: var(--lo, 0%);
+  width: calc(var(--hi, 100%) - var(--lo, 0%));
+  height: 4px;
+  background: var(--c-band);
+}
+.meter__tick {
+  position: absolute;
+  top: 3px;
+  left: var(--at);
+  width: 1px;
+  height: 10px;
+  background: var(--c-ink-3);
+}
+.meter__ptr {
+  position: absolute;
+  top: 0;
+  left: var(--v);
+  width: 3px;
+  height: 16px;
+  margin-left: -1px;
+  background: var(--c-ink);
+}
+.meter[data-level="warning"] .meter__ptr { background: var(--c-amber-text); }
+.meter[data-level="alarm"] .meter__ptr { background: var(--c-signal-red); }
+.meter[data-empty="true"] .meter__ptr { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .meter__ptr { transition: left 400ms linear; }
+}
+
+/* ---------- 최근 경보 ---------- */
+
+.alarms__list { margin: 0; padding: 0; list-style: none; font-size: var(--fs-s); }
+.alarms__list li {
+  display: grid;
+  grid-template-columns: 64px 36px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+  border-bottom: 1px solid var(--c-line);
+}
+.alarm__time { color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.alarms__list li[data-level="warning"] :is(.alarm__level, .alarm__msg) { color: var(--c-amber-text); }
+.alarms__list li[data-level="alarm"] :is(.alarm__level, .alarm__msg) { color: var(--c-signal-red); font-weight: 600; }
+
+/* ---------- 맨 아래 줄: 장치 · (개발용 흉내) · 화면 이동 · 다크 모드 ---------- */
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-5);
+  padding: 0 var(--s-5) var(--s-4);
+}
+.foot__devices,
+.foot__sim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+  font-size: var(--fs-s);
+}
+.foot__title { color: var(--c-ink-2); }
+.devlist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.devlist li { display: inline-flex; align-items: center; gap: var(--s-2); }
+.devlist .lamp { width: 10px; height: 10px; }
+.devlist [data-state="disconnected"] .devlist__state { color: var(--c-amber-text); font-weight: 600; }
+.foot__sim .key { min-height: 44px; font-size: var(--fs-s); }
+.foot__tools { display: flex; gap: var(--s-2); margin-left: auto; }
+
+/* ---------- 화면 크기 ---------- */
+
+/* 1280px 아래: 계수기를 다음 줄로 */
+@media (max-width: 1279px) {
+  .rail { grid-template-columns: minmax(0, 1fr) auto; }
+  .tally { grid-column: 1 / -1; }
+  .body { grid-template-columns: minmax(0, 1fr) minmax(360px, 400px); }
+}
+
+/* 태블릿 이하: 한 줄로 쌓는다. 윗판은 붙여 두지 않는다(화면을 너무 가린다) */
+@media (max-width: 959px) {
+  .rail { position: static; grid-template-columns: 1fr; }
+  .stop { width: 100%; }
+  .tally { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .body { grid-template-columns: minmax(0, 1fr); }
+  .foot__tools { margin-left: 0; }
+}
+
+@media (max-width: 599px) {
+  .rail, .body { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .foot { padding: 0 var(--s-4) var(--s-4); }
+  .tally { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cams { grid-template-columns: minmax(0, 1fr); }
+  .sec__head .legend { margin-left: 0; }
+  .servo thead th:first-child { width: 96px; }
+}

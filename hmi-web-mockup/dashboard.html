@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>불량 선별 대시보드</title>
+  <!-- 테마를 그리기 전에 정하려고 설정 파일만 먼저 읽는다 -->
+  <script src="js/config.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body data-screen="dashboard" data-title-key="db.title" data-phase="offline">
+  <div class="alarm-bar" aria-hidden="true"></div>
+
+  <div class="db">
+    <!-- 윗판: 상태 → 긴급정지 → 계수기 (조작 화면과 같은 읽는 순서) -->
+    <header class="rail" data-i18n-aria="db.rail" aria-label="라인 상태">
+      <div class="rail__state" aria-live="polite">
+        <p class="rail__word"><span class="lamp" id="state-lamp"></span><span id="state-word">연결 중</span></p>
+        <p class="rail__detail" id="state-detail"></p>
+      </div>
+
+      <button type="button" class="stop" id="btn-estop" aria-pressed="false">
+        <span class="stop__head" aria-hidden="true"></span>
+        <span id="estop-label" data-i18n="estop.press">긴급정지</span>
+      </button>
+
+      <dl class="tally" data-i18n-aria="db.tally" aria-label="생산 통계">
+        <div class="tally__item"><dt data-i18n="stats.total">검사</dt><dd id="t-total">0</dd></div>
+        <div class="tally__item"><dt data-i18n="stats.good">양품</dt><dd id="t-good">0</dd></div>
+        <div class="tally__item"><dt data-i18n="stats.defect">불량</dt><dd id="t-defect">0</dd></div>
+        <div class="tally__item"><dt data-i18n="stats.rate">불량률</dt><dd id="t-rate">0.0%</dd></div>
+        <div class="tally__item"><dt data-i18n="db.pace">분당 처리</dt><dd id="t-pace">–</dd></div>
+        <div class="tally__item"><dt data-i18n="db.latency">판정 시간</dt><dd id="t-latency">–</dd></div>
+      </dl>
+    </header>
+
+    <main class="body">
+      <div class="body__main">
+        <!-- 카메라: 서버가 알려 준 카메라마다 하나씩 (dashboard.js) -->
+        <section class="cams" id="cams" data-i18n-aria="db.cameras" aria-label="카메라"></section>
+
+        <section class="trend" aria-labelledby="trend-title">
+          <div class="sec__head">
+            <h2 class="sec__title" id="trend-title" data-i18n="db.trend">분당 판정</h2>
+            <p class="sec__note" data-i18n="db.trend.note">이 화면을 연 뒤부터 셉니다</p>
+            <ul class="legend">
+              <li><span class="legend__key legend__key--good" aria-hidden="true"></span><span data-i18n="result.good">양품</span></li>
+              <li><span class="legend__key legend__key--defect" aria-hidden="true"></span><span data-i18n="result.defect">불량</span></li>
+            </ul>
+          </div>
+          <div class="trend__plot" id="trend-plot" tabindex="0" role="img" data-i18n-aria="db.trend.label" aria-label="최근 30분 분당 판정 수" aria-describedby="trend-table">
+            <svg class="trend__svg" id="trend-svg" aria-hidden="true"></svg>
+            <div class="tip" id="trend-tip" hidden></div>
+          </div>
+          <!-- 그림과 같은 값을 표로 (스크린 리더용). 표에는 overflow가 듣지 않아 숨김은 감싸는 칸에 건다 -->
+          <div class="sr-only">
+            <table id="trend-table">
+              <caption data-i18n="db.trend.caption">최근 30분 분당 판정</caption>
+              <thead><tr><th data-i18n="db.trend.minute">시각</th><th data-i18n="result.good">양품</th><th data-i18n="result.defect">불량</th></tr></thead>
+              <tbody id="trend-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="recent" aria-labelledby="recent-title">
+          <h2 class="sec__title sec__title--alone" id="recent-title" data-i18n="db.recent">최근 판정</h2>
+          <table class="grid-table">
+            <thead>
+              <tr>
+                <th scope="col" data-i18n="db.recent.id">번호</th>
+                <th scope="col" data-i18n="db.recent.time">시각</th>
+                <th scope="col" data-i18n="db.recent.result">판정</th>
+                <th scope="col" class="num" data-i18n="db.recent.conf">신뢰도</th>
+                <th scope="col" class="num" data-i18n="db.recent.latency">판정 시간</th>
+              </tr>
+            </thead>
+            <tbody id="recent-body"></tbody>
+          </table>
+          <p class="empty" id="recent-empty" data-i18n="db.recent.empty">아직 판정이 없습니다. 라인을 시작하면 여기에 쌓입니다.</p>
+        </section>
+      </div>
+
+      <div class="body__side">
+        <!-- 로봇팔(팔로워)·리더암: 서보 6개씩 위치·온도·부하, 팔마다 전원 전압 (dashboard.js) -->
+        <div class="arms" id="arms"></div>
+
+        <section class="alarms" aria-labelledby="alarms-title">
+          <h2 class="sec__title sec__title--alone" id="alarms-title" data-i18n="db.alarms">최근 경보</h2>
+          <ol class="alarms__list" id="alarm-list"></ol>
+          <p class="empty" id="alarm-empty" data-i18n="db.alarms.empty">경고와 비상 기록이 없습니다.</p>
+        </section>
+      </div>
+    </main>
+
+    <footer class="foot">
+      <div class="foot__devices">
+        <p class="foot__title" data-i18n="db.devices">장치</p>
+        <ul class="devlist" id="device-list"></ul>
+      </div>
+      <div class="foot__sim" id="sim" hidden>
+        <p class="foot__title" data-i18n="db.sim">흉내 (개발용)</p>
+        <button type="button" class="key key--quiet view__toggle" data-sim="overheat" aria-pressed="false"><span data-i18n="db.sim.overheat">서보 과열</span></button>
+        <button type="button" class="key key--quiet view__toggle" data-sim="voltage" aria-pressed="false"><span data-i18n="db.sim.voltage">전압 이상</span></button>
+        <button type="button" class="key key--quiet view__toggle" data-sim="slow" aria-pressed="false"><span data-i18n="db.sim.slow">판정 지연</span></button>
+      </div>
+      <div class="foot__tools">
+        <a class="key key--quiet view__toggle" id="link-operator" href="index.html">
+          <svg class="key__icon" aria-hidden="true"><use href="#i-panel"></use></svg>
+          <span data-i18n="nav.operator">조작 화면</span>
+        </a>
+        <button type="button" class="key key--quiet view__toggle" id="btn-theme" aria-pressed="false">
+          <svg class="key__icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+          <span data-i18n="theme.dark">다크 모드</span>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <svg class="icons" aria-hidden="true">
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.5 3.5v17"/><circle cx="15" cy="9" r="2"/><path d="M13 15.5h4"/></g></symbol>
+  </svg>
+
+  <!-- 조작 화면과 같은 순서로 읽는다. 모듈 없이 파일을 더블클릭해도 열리도록 일반 스크립트를 쓴다 -->
+  <script src="config/home-position.js"></script>
+  <script src="config/robot.js"></script>
+  <script src="js/i18n/ko.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/adapter.js"></script>
+  <script src="js/transport.js"></script>
+  <script src="js/mock-server.js"></script>
+  <script src="js/mock-hub.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/camera-sim.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

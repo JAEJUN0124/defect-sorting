@@ -17,7 +17,7 @@
     scope.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
     scope.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
     document.documentElement.lang = locale;
-    document.title = t('app.title');
+    document.title = t((document.body && document.body.dataset.titleKey) || 'app.title'); // 대시보드는 data-title-key="db.title"
   }
 
   window.I18N = {
