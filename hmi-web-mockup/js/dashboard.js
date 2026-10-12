@@ -68,6 +68,11 @@
       case 'event':
         if (['warning', 'alarm'].includes(data.level) && !NOTIFY_SKIP.includes(data.code)) pushAlarm(data);
         break;
+      case 'history': // 지난 기록을 채웠다 (분당 판정은 서버 집계로 바뀜)
+        renderTally();
+        renderRecent();
+        renderTrend();
+        break;
       case 'telemetry':
         renderArm(data.arm);
         break;
@@ -141,8 +146,9 @@
       if (ui.staleSince) detail += ' ' + t('db.detail.stale', { time: clock(ui.staleSince, true) });
       error = true;
     }
-    else if (fault) { detail = t('detail.fault', { fault: store.faultText(st.fault) }); error = true; }
+    else if (fault) { detail = store.faultDetail(st.fault); error = true; }
     else if (p === 'running') detail = t('db.detail.running', { mode: modeWord(), duration: duration() });
+    else if (p === 'stopped' && st.homeRequired) detail = t('detail.homeRequired');
     else if (p === 'stopped') detail = t('db.detail.stopped', { mode: modeWord() });
     else if (p === 'estop') detail = t('db.detail.estop');
     else if (p === 'unknown') detail = t('detail.unknown', { state: st.lineRaw });
@@ -192,7 +198,7 @@
       c.emptyHint.hidden = lost;
       c.view.set(streaming && !ctl.ended ? src : null);
     });
-    sim.setBelt(!!S() && S().line === 'running');
+    sim.setLine(!!S() && S().line === 'running', S() && S().cycle ? S().cycle.stage : null);
     renderCamFps();
   }
 
@@ -460,7 +466,12 @@
   // ---------- 최근 경보 ----------
 
   function pushAlarm(evt) {
-    ui.alarms.unshift({ at: evt.at ? Date.parse(evt.at) : Date.now(), level: evt.level, text: store.eventText(evt) });
+    const parsed = evt.at ? Date.parse(evt.at) : NaN;
+    const at = Number.isNaN(parsed) ? Date.now() : parsed;
+    // 시각 차례로 끼운다 (새것이 위) — 다시 연결될 때 채운 기록이 제자리에 들어가게
+    let i = 0;
+    while (i < ui.alarms.length && ui.alarms[i].at > at) i += 1;
+    ui.alarms.splice(i, 0, { at, level: evt.level, text: store.eventText(evt) });
     if (ui.alarms.length > ALARM_KEEP) ui.alarms.pop();
     renderAlarms();
   }

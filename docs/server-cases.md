@@ -66,7 +66,7 @@ app.mount("/", StaticFiles(directory="hmi-web-mockup", html=True), name="hmi")  
 | WebSocket (FastAPI `WebSocket`, `websockets`) | 기본 | 없음 |
 | Socket.IO (Flask-SocketIO, python-socketio 5.x) | 라이브러리 없이 직접 읽음(Engine.IO 4). 이벤트 이름 = 메시지 종류 | **설정** `server.push: 'socketio'` (네임스페이스가 있으면 `socketioNamespace`, 경로가 다르면 `socketioPath`) |
 | SSE (`text/event-stream`, `EventSource`) | 이름 붙은 이벤트·기본 `message` 둘 다 받음 | **설정** `server.push: 'sse'`, `server.sseUrl` |
-| 실시간 연결이 없음 (REST만) | 상태를 주기적으로 물음. 판정·이벤트 기록은 생기지 않고 통계는 상태로 봄 | **설정** `server.push: 'poll'`, `pollMs` — 판정 목록이 필요하면 **요청**: 실시간 연결 |
+| 실시간 연결이 없음 (REST만) | 상태를 주기적으로 물음. 서버가 기록 조회(`GET /history`)를 주면 2초마다 물어 판정·이벤트도 받음. 없으면 판정·이벤트 기록은 생기지 않고 통계는 상태로 봄 | **설정** `server.push: 'poll'`, `pollMs` — 판정 목록이 필요하면 **요청**: 기록 조회 또는 실시간 연결 |
 | ROS 2 rosbridge | 받기는 됨(`{op:'publish', topic, msg}`) | 명령은 서비스 호출이라 따로 만들어야 함 — 웹 서버를 앞에 두는 것을 권함 |
 | MQTT | 직접 받지 않음 | 서버(또는 브리지)가 WebSocket·SSE로 내보내게 **요청** |
 
@@ -215,3 +215,32 @@ python hmi-web-mockup/tests/variant-server.py 8765
 ```
 
 `http://localhost:5173/?mock=0&api=http://localhost:8765/api&ws=ws://localhost:8765/ws` 로 열면 HMI가 이 서버를 그대로 쓰는 모습을 볼 수 있습니다.
+시험용 서버는 v0.2식이라 기록 조회(`GET /history`)·순번·공정 단계가 없습니다. 이런 서버에서도 HMI가 v0.2 때처럼 동작하는지 볼 때 씁니다.
+미리보기 설정(`.claude/launch.json`)에 `variant-server`로도 들어 있습니다.
+
+## 15. 지난 기록과 순번 (v0.3)
+
+화면을 새로 열거나 서버에 다시 붙을 때 지난 기록을 채우는 기능입니다 ([API 5.2장](API.md#52-순번seq과-기록-조회--get-apihistory-v03-권장)). 없어도 화면은 동작합니다.
+
+| 서버가 이렇게 하면 | HMI 동작 | 할 일 |
+|---|---|---|
+| 기록 조회가 없음 (404·405·501) | 화면을 연 뒤 받은 것만 보임 (v0.2와 같음). 대시보드 시스템 탭에 "지난 기록: 서버에 없음" | 그대로 — 또는 **요청**: `GET /api/history` |
+| 경로가 다름 (`/api/logs` 등) | 없는 것으로 봄 | **설정** `server.paths: { history: '/logs' }` |
+| 이름이 다름 (`logs`·`results`·`buckets`·`runId`·`server_time`) | 자동 | — |
+| 판정·이벤트에 순번(`seq`)이 없음 | 처음 열 때 채우기는 됨. 다시 붙을 때 겹친 기록을 가려내지 못함 | **요청**: `seq` (서버 점검이 알려 줌) |
+| `run_id`가 없음 | 서버를 다시 켜면 순번이 처음부터라 다시 붙을 때 빈 곳 채우기가 빠질 수 있음 | **요청**: `run_id` |
+| 서버 시각(`now`)이 없음 | 분당 그래프를 받은 시각 그대로 그림. 서버와 PC 시계가 5초 넘게 다르면 밀림 | **요청**: `now` |
+| 분당 집계(`minutes`)가 없음 | 기록의 판정으로 셈 (최근 판정 개수만큼만) | **요청**: `minutes` |
+| 명령을 웹소켓으로 받음 (`commands: 'ws'`) | `history` 명령의 `body`에 `after`·`events`·`inspections`·`minutes` | — |
+
+## 16. 공정 단계 · 원점 필요 · 고장이 풀리는 방법 (v0.3)
+
+| 서버가 이렇게 하면 | HMI 동작 | 할 일 |
+|---|---|---|
+| `cycle`이 없음 | 대시보드 공정 흐름은 가동 여부만 보임. 가짜 카메라 영상은 계속 돎 | 그대로 — 또는 **요청**: `cycle` |
+| 단계 이름이 다름 (`PICKING`·`judging`·`eject` 등) | 자동 (`adapter.js`의 `STAGE` 표) | 모르는 이름은 그대로 보임 — 자주 쓰면 표에 한 줄 더함 |
+| 단계를 글자 하나로 보냄 (`"process": "sorting"`) | 자동 | — |
+| `home_required`가 없음 | 원점 필요 안내를 하지 않음. 서버가 `409 HOME_REQUIRED`로 거절하면 그때 이유를 보임 | **요청**: `home_required` |
+| 원점 필요를 다른 이름으로 (`needs_home` 등) | 자동 | — |
+| `fault.clear`가 없음 | `auto`로 봄 ("원인을 없앤 뒤 시작하세요") | 원점·확인으로 풀리는 고장이면 **요청**: `clear` |
+| `clear` 값이 다름 (`ack`·`confirm`·`homing`) | 자동 (`ack`·`confirm` → `start`, `homing` → `home`) | — |

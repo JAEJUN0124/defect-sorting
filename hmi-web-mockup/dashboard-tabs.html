@@ -305,7 +305,7 @@
       <section class="page" id="page-production" role="tabpanel" aria-labelledby="tab-production" hidden>
         <div class="page__head">
           <h1 class="page__title" data-i18n="dbt.page.production">생산 현황</h1>
-          <p class="page__meta" data-i18n="db.trend.note">이 화면을 연 뒤부터 셉니다</p>
+          <p class="page__meta" data-i18n="db.trend.note" data-history-note="db.trend.note">이 화면을 연 뒤부터 셉니다</p>
           <div class="page__tools">
             <span id="range-label" data-i18n="dbt.range">보는 범위</span>
             <div class="seg" role="group" aria-labelledby="range-label" id="range">
@@ -475,7 +475,7 @@
           <section class="pnl span-12" aria-labelledby="dv-log-title">
             <div class="pnl__head">
               <h2 class="pnl__title" id="dv-log-title" data-i18n="dbt.devices.log">연결 기록</h2>
-              <p class="pnl__meta" data-i18n="dbt.log.note">이 화면을 연 뒤의 기록</p>
+              <p class="pnl__meta" data-i18n="dbt.log.note" data-history-note="dbt.log.note">이 화면을 연 뒤의 기록</p>
             </div>
             <div class="pnl__body pnl__body--flush pnl__body--scroll">
               <table class="tbl">
@@ -515,7 +515,7 @@
           <section class="pnl span-8" aria-labelledby="al-log-title">
             <div class="pnl__head">
               <h2 class="pnl__title" id="al-log-title" data-i18n="dbt.log">기록</h2>
-              <p class="pnl__meta" data-i18n="dbt.log.note">이 화면을 연 뒤의 기록</p>
+              <p class="pnl__meta" data-i18n="dbt.log.note" data-history-note="dbt.log.note">이 화면을 연 뒤의 기록</p>
               <div class="seg pnl__tools" role="group" data-i18n-aria="dbt.log.filter" aria-label="등급 고르기" id="log-filter">
                 <button type="button" data-filter="all" aria-pressed="true"></button>
                 <button type="button" data-filter="alarm" aria-pressed="false"></button>
@@ -552,6 +552,9 @@
             <button type="button" class="key key--quiet view__toggle" data-sim="overheat" aria-pressed="false"><span data-i18n="db.sim.overheat">서보 과열</span></button>
             <button type="button" class="key key--quiet view__toggle" data-sim="voltage" aria-pressed="false"><span data-i18n="db.sim.voltage">전압 이상</span></button>
             <button type="button" class="key key--quiet view__toggle" data-sim="slow" aria-pressed="false"><span data-i18n="db.sim.slow">판정 지연</span></button>
+            <button type="button" class="key key--quiet view__toggle" data-sim="gripFail" aria-pressed="false"><span data-i18n="db.sim.gripFail">집기 실패</span></button>
+            <button type="button" class="key key--quiet view__toggle" data-sim="jam" aria-pressed="false"><span data-i18n="db.sim.jam">부품 걸림</span></button>
+            <button type="button" class="key key--quiet view__toggle" data-sim="conveyorButton" aria-pressed="false"><span data-i18n="db.sim.conveyorButton">컨베이어 정지 단추</span></button>
           </div>
         </div>
         <div class="grid grid--fixed">
@@ -643,6 +646,7 @@
   <script src="js/i18n.js"></script>
   <script src="js/adapter.js"></script>
   <script src="js/transport.js"></script>
+  <script src="js/conveyor.js"></script>
   <script src="js/mock-server.js"></script>
   <script src="js/mock-hub.js"></script>
   <script src="js/api.js"></script>

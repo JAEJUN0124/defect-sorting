@@ -46,6 +46,9 @@
   function noteFor(key, p, short) {
     if (ui.notes[key]) return ui.notes[key];
     if ((key === 'home' || key === 'mode') && p === 'running') return { text: t(short ? 'ctl.locked.short' : 'run.locked') };
+    // 긴급정지·로봇팔 고장 뒤에는 원점을 다시 잡아야 시작할 수 있다 (docs/API.md 4.1 HOME_REQUIRED)
+    if (key === 'run' && p === 'stopped' && S() && S().homeRequired) return { text: t(short ? 'ctl.homeFirst.short' : 'run.homeFirst') };
+    if (key === 'home' && p === 'stopped' && S() && S().homeRequired) return { text: t(short ? 'ctl.homeNeeded.short' : 'home.needed') };
     if (key === 'home' && cfg.devMode && home.provisional && p === 'stopped') return { text: t(short ? 'ctl.provisional.short' : 'home.provisional') };
     return null;
   }
@@ -119,8 +122,15 @@
     });
   }
 
+  // 서버가 지난 기록(GET /history)을 주면 "이 화면을 연 뒤부터" 안내를 서버 기록 안내로 바꾼다 (data-history-note="i18n 키")
+  function renderHistoryNotes() {
+    const fromServer = store.state.history.supported === true;
+    all('[data-history-note]').forEach((n) => { n.textContent = t(n.dataset.historyNote + (fromServer ? '.server' : '')); });
+  }
+
   store.subscribe((kind) => {
     if (kind === 'shutdown_complete') { finishExit(); return; }
+    if (kind === 'history') { renderHistoryNotes(); return; }
     if (!['status', 'online', 'info'].includes(kind)) return;
     clearSolvedNotes();
     // 라인 상태가 바뀌면 지난 실패 안내는 지운다 (예: 시작 실패 → 장치 연결 → 가동)

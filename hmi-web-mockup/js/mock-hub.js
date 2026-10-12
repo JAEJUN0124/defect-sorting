@@ -1,13 +1,15 @@
 // 가짜 서버 나눠 쓰기 — 조작 화면과 대시보드를 두 창(탭)에 띄워도 같은 가짜 서버를 보게 합니다.
 // 한 탭만 가짜 서버(mock-server.js)를 돌리고, 다른 탭은 BroadcastChannel로 요청과 메시지를 주고받습니다.
 // 서버는 화면에 보이는 탭이 맡습니다: 숨은 탭은 브라우저가 타이머를 크게 줄여(5분 뒤 1분에 한 번) 서버가 멈춘 것처럼 되기 때문입니다.
-// 넘겨받는 탭은 마지막 상태·서보 값에서 이어 갑니다. 이 기능이 없는 환경(파일을 더블클릭해 연 경우 등)에서는 탭마다 따로 돌립니다.
+// 넘겨받는 탭은 마지막 상태·서보 값·지난 기록(순번·run_id)에서 이어 갑니다. 이 기능이 없는 환경(파일을 더블클릭해 연 경우 등)에서는 탭마다 따로 돌립니다.
 (function (root) {
   'use strict';
 
-  const CHANNEL = 'hmi-mock-v2';
-  const LOCK = 'hmi-mock-server';
+  const CHANNEL = 'hmi-mock-v3';
+  const LOCK = 'hmi-mock-server-v3';
   const REQUEST_TIMEOUT_MS = 5000;
+  const HISTORY_KEEP = 500; // mock-server.js의 KEEP과 같게
+  const MINUTES_KEEP = 180;
   const forever = () => new Promise(() => {});
 
   function local() {
@@ -28,6 +30,8 @@
     let server = null; // 이 탭이 서버를 돌리면 여기에 있다
     let lastStatus = null; // 넘겨받을 때 이어 갈 마지막 상태
     const lastTelemetry = {}; // 넘겨받을 때 이어 갈 서보 값 { arm, leader }
+    // 넘겨받을 때 이어 갈 지난 기록(GET /history) — run_id·순번이 이어져야 화면이 서버가 다시 켜진 것으로 보지 않는다
+    let lastHistory = { runId: null, seq: 0, events: [], inspections: [], minutes: [] };
     let decided;
     const ready = new Promise((resolve) => { decided = resolve; });
     let welcomed;
@@ -38,20 +42,36 @@
 
     const post = (msg) => channel.postMessage(Object.assign({ from: me }, msg));
 
-    function remember(msg) {
+    function remember(msg, runId) {
       if (!msg) return;
+      if (runId) lastHistory.runId = runId;
       if (msg.type === 'status') lastStatus = msg.data;
       if (msg.type === 'telemetry' && msg.data) lastTelemetry[msg.data.arm] = msg.data;
+      // 순번이 붙은 판정·이벤트는 기록으로 쌓는다 (판정은 분당 집계도)
+      const d = msg.data;
+      if ((msg.type === 'event' || msg.type === 'inspection') && d && typeof d.seq === 'number') {
+        const list = msg.type === 'event' ? lastHistory.events : lastHistory.inspections;
+        list.push(d);
+        if (list.length > HISTORY_KEEP) list.shift();
+        lastHistory.seq = Math.max(lastHistory.seq, d.seq);
+        if (msg.type === 'inspection' && (d.result === 'good' || d.result === 'defect')) {
+          const t = Math.floor((Date.parse(d.at) || Date.now()) / 60000) * 60000;
+          let bucket = lastHistory.minutes[lastHistory.minutes.length - 1];
+          if (!bucket || bucket.t !== t) { bucket = { t, good: 0, defect: 0 }; lastHistory.minutes.push(bucket); }
+          bucket[d.result] += 1;
+          if (lastHistory.minutes.length > MINUTES_KEEP) lastHistory.minutes.shift();
+        }
+      }
     }
 
     function becomeLeader() {
       if (server) return;
-      server = new root.MockServer({ seed: lastStatus, telemetry: lastTelemetry });
+      server = new root.MockServer({ seed: lastStatus, telemetry: lastTelemetry, history: lastHistory.runId ? lastHistory : null });
       // 서버가 내보내는 모든 메시지를 다른 탭에 전한다
       server.connect({
         onOpen: () => post({ kind: 'online', on: true }),
         onClose: () => post({ kind: 'online', on: false }),
-        onMessage: (msg) => { remember(msg); post({ kind: 'msg', msg }); },
+        onMessage: (msg) => { remember(msg, server.runId); post({ kind: 'msg', msg, runId: server.runId }); },
       });
       local.forEach((c) => { if (!c.conn) c.conn = server.connect(c.handlers); });
     }
@@ -60,6 +80,7 @@
     function demote() {
       if (!server) return;
       lastStatus = server.snapshot();
+      lastHistory = server.historySnapshot();
       server.destroy();
       server = null;
       local.forEach((c) => { if (c.conn) { c.conn.close(); c.conn = null; } });
@@ -86,7 +107,7 @@
       if (m.from === me) return;
       if (server) {
         // 서버를 돌리는 탭: 다른 탭의 요청에 답한다
-        if (m.kind === 'hello') post({ kind: 'welcome', to: m.from, online: server.online, status: server.snapshot(), telemetry: lastTelemetry });
+        if (m.kind === 'hello') post({ kind: 'welcome', to: m.from, online: server.online, status: server.snapshot(), telemetry: lastTelemetry, history: server.historySnapshot() });
         else if (m.kind === 'dev') server.setDevice(m.name, m.connected);
         else if (m.kind === 'sim') server.simulate(m.sim, m.on);
         else if (m.kind === 'req') {
@@ -101,11 +122,12 @@
       }
       // 따라가는 탭
       if (m.kind === 'msg') {
-        remember(m.msg);
+        remember(m.msg, m.runId);
         local.forEach((c) => deliver(c, m.msg));
       } else if (m.kind === 'welcome' && m.to === me) {
         lastStatus = m.status;
         Object.assign(lastTelemetry, m.telemetry);
+        if (m.history) lastHistory = m.history;
         welcomed();
         if (m.online) local.forEach((c) => deliver(c, { type: 'status', data: m.status }));
       } else if (m.kind === 'online') {

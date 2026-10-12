@@ -8,7 +8,10 @@
 
   const INSPECTION_KEEP = 60;
   const MINUTES_KEEP = 120;
-  const EMPTY_STATUS = { line: 'stopped', estop: false, mode: 'auto', devices: {}, stats: { total: 0, good: 0, defect: 0 }, cameras: {}, fault: null, startedAt: null };
+  const SYNC_WAIT_MS = 2000; // 기록 조회가 이보다 늦으면 기다리지 않고 실시간 것을 먼저 보인다
+  const POLL_HISTORY_MS = 2000; // 실시간 연결이 없는 서버(push 'poll')면 이 간격으로 기록을 물어 판정·이벤트를 받는다
+  const SEEN_KEEP = 2000;
+  const EMPTY_STATUS = { line: 'stopped', estop: false, mode: 'auto', devices: {}, stats: { total: 0, good: 0, defect: 0 }, cameras: {}, fault: null, startedAt: null, homeRequired: false, cycle: null };
 
   const listeners = new Set();
   const state = {
@@ -20,8 +23,20 @@
     telemetry: { arm: null, leader: null },
     metrics: null,
     inspections: [], // 최근 판정, 새것이 앞
-    minutes: [], // 분마다 판정 수 [{ t, good, defect }] — 받은 시각(이 PC 시계) 기준
+    minutes: [], // 분마다 판정 수 [{ t, good, defect }] — 이 PC 시계 기준 (서버 분당 집계는 시계 차이를 빼서 옮김)
+    history: { supported: null, runId: null, restored: 0 }, // 기록 조회(GET /history): 서버가 주는지, 처음에 채운 기록 수
     lastMessageAt: 0,
+  };
+  // 지난 기록 맞추기 (docs/API.md 5.2): 화면을 열 때와 다시 연결될 때 빈 곳을 채운다
+  const sync = {
+    lastSeq: 0, // 마지막으로 받은 순번 — 다시 붙을 때 이 뒤만 묻는다
+    seen: new Set(), // 이미 쓴 순번 (기록 응답과 실시간 메시지가 겹쳐도 한 번만)
+    minutesSeq: 0, // 서버 분당 집계에 들어간 마지막 순번 — 그 뒤 판정만 화면이 센다
+    syncing: false, // 기록을 묻는 동안 실시간 판정·이벤트는 줄 세워 둔다 (지난 것 → 새것 차례로 보이게)
+    queue: [],
+    timer: 0,
+    busy: false,
+    pollTimer: 0,
   };
   let started = false;
   let heartbeatSeen = false;
@@ -60,6 +75,99 @@
       const st = await api.getStatus();
       if (version === statusVersion) applyStatus(st); // 그사이 실시간 상태가 왔으면 그것이 더 새것
     } catch (err) { /* 실시간 메시지로 받는다 */ }
+    await syncHistory();
+  }
+
+  // ---------- 지난 기록 ----------
+
+  function beginSync() {
+    if (state.history.supported === false) return;
+    sync.syncing = true;
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(flushQueue, SYNC_WAIT_MS);
+  }
+
+  function flushQueue() {
+    clearTimeout(sync.timer);
+    sync.syncing = false;
+    sync.queue.splice(0).forEach((msg) => deliver(msg, { late: true }));
+  }
+
+  // 처음 열 때는 최근 기록을, 다시 붙을 때는 마지막으로 받은 순번 뒤만 묻는다.
+  // 처음 채우는 기록은 restored(예전 기록 — 알림을 켜지 않음), 빈 곳 채우기는 실시간과 같게 다룬다
+  async function syncHistory() {
+    if (sync.busy) return; // 앞서 묻는 중인 것이 끝나며 줄 세운 것을 내보낸다
+    if (state.history.supported === false) { flushQueue(); return; }
+    sync.busy = true;
+    const initial = state.history.runId === null;
+    const ask = (after) => api.getHistory({ after, events: cfg.logLimit || 200, inspections: INSPECTION_KEEP, minutes: MINUTES_KEEP });
+    try {
+      let h = await ask(initial ? undefined : sync.lastSeq);
+      if (!h) {
+        state.history.supported = false;
+        emit('history', state.history);
+        return;
+      }
+      // 서버가 다시 켜졌으면 순번이 처음부터다: 지난 순번은 잊고 새 기록을 처음부터 받는다
+      if (!initial && h.runId && h.runId !== state.history.runId) {
+        sync.seen.clear();
+        sync.lastSeq = 0;
+        sync.minutesSeq = 0;
+        h = (await ask(undefined)) || h;
+      }
+      state.history.supported = true;
+      state.history.runId = h.runId || state.history.runId || '';
+      // 서버와 이 PC의 시계 차이 — 5초 안쪽이면 같은 시계로 본다 (응답이 오는 데 걸린 시간)
+      const raw = h.now ? Date.now() - Date.parse(h.now) : 0;
+      const offset = Number.isFinite(raw) && Math.abs(raw) >= 5000 ? raw : 0;
+      if (h.minutes) applyMinutes(h.minutes, offset, h.lastSeq);
+      const items = h.events.map((data) => ({ type: 'event', data })).concat(h.inspections.map((data) => ({ type: 'inspection', data })));
+      items.sort((a, b) => (a.data.seq || 0) - (b.data.seq || 0));
+      items.forEach((msg) => deliver(msg, { restored: initial, fromHistory: true, offset, serverMinutes: !!h.minutes }));
+      if (initial) state.history.restored = items.length;
+      emit('history', state.history);
+      if (cfg.server.push === 'poll' && !sync.pollTimer) {
+        sync.pollTimer = setInterval(() => { if (state.online) syncHistory(); }, POLL_HISTORY_MS);
+      }
+    } catch (err) {
+      /* 다음 연결 때 다시 묻는다 */
+    } finally {
+      sync.busy = false;
+      flushQueue();
+    }
+  }
+
+  // 서버 분당 집계를 이 PC 시계로 옮겨 쓴다
+  function applyMinutes(list, offset, lastSeq) {
+    const byMinute = new Map();
+    list.forEach((b) => {
+      const t = Math.floor((Date.parse(b.t) + offset) / 60000) * 60000;
+      if (!Number.isFinite(t)) return;
+      const x = byMinute.get(t) || { t, good: 0, defect: 0 };
+      x.good += b.good;
+      x.defect += b.defect;
+      byMinute.set(t, x);
+    });
+    state.minutes = Array.from(byMinute.values()).sort((a, b) => a.t - b.t).slice(-MINUTES_KEEP);
+    if (typeof lastSeq === 'number') sync.minutesSeq = lastSeq;
+  }
+
+  // 순번이 있는 판정·이벤트는 한 번만 쓴다
+  function deliver(msg, opts) {
+    const d = msg.data;
+    if (d && typeof d.seq === 'number') {
+      if (sync.seen.has(d.seq)) return;
+      sync.seen.add(d.seq);
+      if (sync.seen.size > SEEN_KEEP) sync.seen.delete(sync.seen.values().next().value);
+      if (d.seq > sync.lastSeq) sync.lastSeq = d.seq;
+    }
+    if (msg.type === 'inspection') onInspection(d, opts || {});
+    else onEvent(d, opts || {});
+  }
+
+  function onEvent(d, opts) {
+    if (/^servo_/.test(d.code)) serverServoEvents = true;
+    emit('event', opts.restored ? Object.assign({ restored: true }, d) : d);
   }
 
   function setInfo(info) {
@@ -83,27 +191,50 @@
     emit('status', next);
   }
 
-  function onInspection(d) {
+  // opts.restored: 처음 채우는 지난 판정 — 통계는 상태(stats)가 맞는 값이라 건드리지 않는다
+  // opts.late: 기록을 묻는 동안 줄 세웠던 실시간 판정 — 그사이 온 상태보다 오래된 통계로 되돌리지 않는다
+  function onInspection(d, opts) {
+    const o = opts || {};
     const st = state.status || (state.status = Object.assign({}, EMPTY_STATUS));
-    if (d.stats) st.stats = d.stats;
+    if (o.restored) { /* 통계는 상태가 이미 알려 줬다 */ }
+    else if (d.stats) { if (!o.late || d.stats.total >= st.stats.total) st.stats = d.stats; }
     else if (d.result) {
       // 서버가 판정마다 통계를 안 보내면 HMI가 센다. 다음 상태 메시지의 stats가 오면 그것이 맞는 값이다
       st.stats = Object.assign({}, st.stats);
       st.stats.total += 1;
       st.stats[d.result] += 1;
     }
-    const item = Object.assign({ receivedAt: Date.now() }, d);
-    state.inspections.unshift(item);
-    if (state.inspections.length > INSPECTION_KEEP) state.inspections.pop();
-    const minute = Math.floor(item.receivedAt / 60000) * 60000;
-    let bucket = state.minutes[state.minutes.length - 1];
-    if (!bucket || bucket.t !== minute) {
+    // 지난 판정은 판정 시각을 이 PC 시계로 옮겨 "받은 때"로 쓴다 (분당 처리를 셀 때 최근 것으로 잘못 세지 않게)
+    const at = Date.parse(d.at);
+    const receivedAt = o.restored && Number.isFinite(at) ? at + (o.offset || 0) : Date.now();
+    const item = Object.assign({ receivedAt }, d);
+    insertInspection(item);
+    // 분당 집계: 서버 집계에 이미 들어간 판정은 다시 세지 않는다
+    const counted = (o.restored && o.serverMinutes) || (typeof d.seq === 'number' && d.seq <= sync.minutesSeq);
+    if (!counted && (d.result === 'good' || d.result === 'defect')) countMinute(receivedAt, d.result);
+    // 기록 조회로 채운 판정은 하나씩 알리지 않는다 — 영상 위 판정 상자는 지금 판정에만 그리고, 목록·그래프는 'history' 알림 때 다시 그린다
+    if (!o.fromHistory) emit('inspection', item);
+  }
+
+  // 새것이 앞. 늦게 온 지난 판정은 순번 자리에 끼운다
+  function insertInspection(item) {
+    const list = state.inspections;
+    let i = 0;
+    if (typeof item.seq === 'number') while (i < list.length && typeof list[i].seq === 'number' && list[i].seq > item.seq) i += 1;
+    list.splice(i, 0, item);
+    if (list.length > INSPECTION_KEEP) list.pop();
+  }
+
+  function countMinute(ms, result) {
+    const minute = Math.floor(ms / 60000) * 60000;
+    let bucket = state.minutes.find((b) => b.t === minute);
+    if (!bucket) {
       bucket = { t: minute, good: 0, defect: 0 };
       state.minutes.push(bucket);
+      state.minutes.sort((a, b) => a.t - b.t);
       if (state.minutes.length > MINUTES_KEEP) state.minutes.shift();
     }
-    if (d.result === 'good' || d.result === 'defect') bucket[d.result] += 1;
-    emit('inspection', item);
+    bucket[result] += 1;
   }
 
   function onMessage(msg) {
@@ -116,11 +247,10 @@
         applyStatus(d);
         break;
       case 'inspection':
-        if (d) onInspection(d);
-        break;
       case 'event':
-        if (d && /^servo_/.test(d.code)) serverServoEvents = true;
-        emit('event', d);
+        if (!d) break;
+        if (sync.syncing) sync.queue.push(msg);
+        else deliver(msg);
         break;
       case 'joints':
         if (d) { state.joints[d.source] = d; emit('joints', d); }
@@ -240,6 +370,7 @@
     if (p.joint) p.joint = jointName(p.joint);
     if (p.reason) p.reason = reasonText(p.reason);
     if (p.camera) p.camera = cameraName(p.camera);
+    if (p.step) p.step = stepName(p.step);
     const key = 'event.' + evt.code;
     const text = t(key, p);
     if (text !== key && !/\{\w+\}/.test(text)) return text;
@@ -249,11 +380,23 @@
     return evt.message || t('event.unknown', { code: evt.code });
   }
 
+  // 고장 안내 한 줄: 멈춘 이유 + 풀리는 방법(clear: auto · home · start, docs/API.md 3.1)
+  function faultDetail(fault) {
+    const clear = fault.clear === 'home' || fault.clear === 'start' ? fault.clear : 'auto';
+    return t('detail.fault.' + clear, { fault: faultText(fault) });
+  }
+
+  // 공정 단계·로봇팔 단계 이름 (모르는 이름은 서버가 보낸 그대로)
+  const stageName = (stage) => known('stage.' + stage, stage);
+  const stepName = (step) => known('step.' + step, step);
+
   // 값이 다 있으면 자세히, 빠진 값이 있으면 짧은 원인만
   function faultText(fault) {
     const p = Object.assign({}, fault.params);
     if (p.arm) p.arm = armName(p.arm);
     if (p.joint) p.joint = jointName(p.joint);
+    if (p.reason) p.reason = reasonText(p.reason);
+    if (p.step) p.step = stepName(p.step);
     const full = t('fault.' + fault.code, p);
     if (full !== 'fault.' + fault.code && !/\{\w+\}/.test(full)) return full;
     const short = t('reason.' + fault.code);
@@ -304,7 +447,7 @@
       if (started) return;
       started = true;
       api.connect({
-        onOpen() { setOnline(true); refresh(); },
+        onOpen() { setOnline(true); beginSync(); refresh(); },
         onClose() { setOnline(false); },
         onMessage,
       });
@@ -319,6 +462,9 @@
     armName,
     eventText,
     faultText,
+    faultDetail,
     errorText,
+    stageName,
+    stepName,
   };
 })();

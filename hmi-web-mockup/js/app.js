@@ -109,7 +109,8 @@
   function renderState(p) {
     const fault = p === 'stopped' && S().fault;
     el.stateWord.textContent = t('state.' + p);
-    if (fault) el.stateDetail.textContent = t('detail.fault', { fault: store.faultText(S().fault) });
+    if (fault) el.stateDetail.textContent = store.faultDetail(S().fault);
+    else if (p === 'stopped' && S().homeRequired) el.stateDetail.textContent = t('detail.homeRequired');
     else if (p === 'stopped' || p === 'running') el.stateDetail.textContent = t('detail.' + p + '.' + modeKey());
     else if (p === 'unknown') el.stateDetail.textContent = t('detail.unknown', { state: S().lineRaw });
     else el.stateDetail.textContent = t('detail.' + p);
@@ -137,11 +138,14 @@
     el.runLabel.textContent = t(running ? 'run.stop' : 'run.start');
     el.runIcon.setAttribute('href', running ? '#i-stop' : '#i-play');
     el.run.disabled = !(stopped || running) || ui.busy.has('run');
-    setNote(el.runNote, ui.notes.run || (running ? { text: t('run.locked') } : null));
+    // 누르기 전에 알 수 있는 이유: 가동 중이면 잠긴 조작, 원점이 필요하면 원점 먼저
+    const runHint = running ? { text: t('run.locked') } : stopped && S().homeRequired ? { text: t('run.homeFirst') } : null;
+    setNote(el.runNote, ui.notes.run || runHint);
 
     // 원점 — 정지 상태에서만
     el.home.disabled = !stopped || ui.busy.has('home');
-    setNote(el.homeNote, ui.notes.home || (cfg.devMode && home.provisional ? { text: t('home.provisional') } : null));
+    const homeHint = stopped && S().homeRequired ? { text: t('home.needed') } : cfg.devMode && home.provisional ? { text: t('home.provisional') } : null;
+    setNote(el.homeNote, ui.notes.home || homeHint);
 
     // 운전 모드 — 정지 상태에서만
     el.modeKeys.forEach((key) => {
@@ -165,7 +169,7 @@
     el.camera.disabled = !online() || !st || busy || ui.exiting;
     el.cameraLabel.textContent = t(busy ? 'camera.connecting' : 'camera.connect');
     setNote(el.cameraNote, ui.notes.camera);
-    sim.setBelt(!!st && st.line === 'running');
+    sim.setLine(!!st && st.line === 'running', st && st.cycle ? st.cycle.stage : null);
     camera.set(streaming ? src : null);
   }
 
@@ -289,10 +293,15 @@
     msg.className = 'log__msg';
     msg.textContent = store.eventText(evt);
     li.append(time, msg);
-    el.logList.prepend(li);
+    // 시각 차례로 끼운다 — 다시 연결될 때 채운 기록이 끊겼던 동안의 자리에 들어가게 (새것이 위)
+    const ms = Date.parse(at);
+    let next = el.logList.firstElementChild;
+    while (next && Date.parse(next.querySelector('time').dateTime) > ms) next = next.nextElementSibling;
+    el.logList.insertBefore(li, next);
     while (el.logList.children.length > cfg.logLimit) el.logList.lastElementChild.remove();
     el.logEmpty.hidden = true;
-    if (!el.logWin.open && NOTIFY_LEVELS.includes(li.dataset.level) && !NOTIFY_SKIP.includes(evt.code)) setUnread(true);
+    // 화면을 열며 채운 지난 기록(restored)은 이미 지난 일이라 알림 점을 켜지 않는다
+    if (!evt.restored && !el.logWin.open && NOTIFY_LEVELS.includes(li.dataset.level) && !NOTIFY_SKIP.includes(evt.code)) setUnread(true);
   }
 
   function clock(iso) {

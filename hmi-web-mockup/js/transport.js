@@ -9,6 +9,7 @@
   const COMMANDS = {
     info: ['GET', '/info'],
     status: ['GET', '/status'],
+    history: ['GET', '/history'],
     start: ['POST', '/line/start'],
     stop: ['POST', '/line/stop'],
     estop: ['POST', '/estop'],

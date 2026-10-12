@@ -1,8 +1,9 @@
-// 장치 점검 — 로봇팔 서보(Feetech, Web Serial) · USB 카메라 · 시리얼 콘솔. 설치·고장 확인용 (운영 화면 아님)
+// 장치 점검 — 로봇팔 서보(Feetech, Web Serial)·자세 저장 · USB 카메라 · 컨베이어 규약 점검 · 시리얼 콘솔. 설치·고장 확인용 (운영 화면 아님)
 (function () {
   const robot = window.HMI_ROBOT;
   const home = window.HMI_HOME_POSITION || { unit: 'deg' };
   const FT = window.Feetech;
+  const CV = window.Conveyor;
   const { t } = window.I18N;
   const $ = (id) => document.getElementById(id);
   const JOINTS = robot.joints;
@@ -31,11 +32,13 @@
     port: $('servo-port'), checks: $('servo-checks'), table: $('servo-table'), rows: $('servo-rows'), home: $('servo-home'), homeOut: $('servo-home-out'),
   };
   const servo = { link: null, bus: null, found: [], info: {}, tel: {}, timer: 0, busy: false };
+  const po = { name: $('pose-name'), save: $('pose-save'), clear: $('pose-clear'), out: $('pose-out') };
 
   function setServoButtons(on) {
     sv.live.disabled = !on;
     sv.close.disabled = !on;
     sv.home.disabled = !on;
+    po.save.disabled = !on;
     if (!on) { sv.live.setAttribute('aria-pressed', 'false'); clearInterval(servo.timer); }
   }
 
@@ -207,6 +210,43 @@
     } catch (e) { /* 복사가 막히면 화면의 글을 직접 복사 */ }
   });
 
+  // ----- 자세 저장 (docs/arm-control.md 3.4장) -----
+  // 원점 값과 같은 계산으로 6축을 읽어 이름별로 모은다. 이 브라우저에 남겨 두어 여러 자세를 차례로 모을 수 있다
+  const POSE_KEY = 'hmi.armPoses';
+  const loadPoses = () => { try { return JSON.parse(localStorage.getItem(POSE_KEY) || '{}'); } catch (e) { return {}; } };
+
+  function renderPoses() {
+    const poses = loadPoses();
+    if (!Object.keys(poses).length) { po.out.textContent = '아직 모은 자세가 없습니다.'; return; }
+    po.out.textContent = JSON.stringify({ unit: home.unit === 'norm' ? 'norm' : 'deg', poses }, null, 2)
+      .replace(/\{\n\s+("shoulder_pan"[\s\S]*?)\n\s+\}/g, (m, body) => '{ ' + body.replace(/\n\s+/g, ' ') + ' }'); // 자세 하나를 한 줄로
+  }
+
+  po.save.addEventListener('click', async () => {
+    const name = po.name.value.trim();
+    if (!/^[a-z][a-z0-9_]*$/.test(name)) { po.out.textContent = '자세 이름은 영문 소문자·숫자·밑줄로 쓰세요 (예: above_pick).'; return; }
+    await servoRead();
+    const pose = {};
+    const missing = [];
+    JOINTS.forEach((joint, i) => {
+      const pos = displayPos(i + 1);
+      if (pos && pos.value !== null) pose[joint] = Math.round(pos.value * 10) / 10;
+      else missing.push(t('joint.' + joint));
+    });
+    if (missing.length) { po.out.textContent = missing.join(', ') + ' 값을 읽지 못해 저장하지 않았습니다. 서보 연결을 확인하세요.'; return; }
+    const poses = loadPoses();
+    poses[name] = pose;
+    try { localStorage.setItem(POSE_KEY, JSON.stringify(poses)); } catch (e) { /* 저장이 막히면 화면에만 */ }
+    renderPoses();
+    try { await navigator.clipboard.writeText(po.out.textContent); } catch (e) { /* 복사가 막히면 화면의 글을 직접 복사 */ }
+  });
+
+  po.clear.addEventListener('click', () => {
+    try { localStorage.removeItem(POSE_KEY); } catch (e) { /* 이미 비어 있음 */ }
+    renderPoses();
+  });
+  renderPoses();
+
   // ---------- 2. 카메라 ----------
 
   const cam = { list: $('cam-list'), device: $('cam-device'), slot: $('cam-slot'), save: $('cam-save'), fake: $('cam-fake'), video: $('cam-video'), info: $('cam-info'), saved: $('cam-saved') };
@@ -320,7 +360,136 @@
   });
   st.close.addEventListener('click', () => view.set(null));
 
-  // ---------- 3. 시리얼 콘솔 ----------
+  // ---------- 3. 컨베이어 (아두이노 규약 점검, docs/conveyor-protocol.md) ----------
+  // 서버 쪽 견본(Conveyor.Client)으로 연결해, 사람이 명령을 보내 보거나 규약 점검을 차례로 돌린다
+
+  const cv = {
+    connect: $('cv-connect'), fake: $('cv-fake'), close: $('cv-close'), port: $('cv-port'), state: $('cv-state'),
+    keys: Array.from(document.querySelectorAll('[data-cv]')), speed: $('cv-speed'), motion: $('cv-motion'),
+    check: $('cv-check'), checks: $('cv-checks'), log: $('cv-log'),
+  };
+  const conv = { client: null, link: null, checking: false, lastEvent: null };
+  const STATE_WORD = { stopped: '멈춤', running: '가동', halted: '잠긴 정지' };
+  const REASON_WORD = { boot: '켜짐', command: '명령', part: '센서에 부품', watchdog: '감시 타이머', button: '정지 단추', fault: '이상' };
+
+  function cvLog(text) {
+    cv.log.textContent = (cv.log.textContent + text + '\n').slice(-12000);
+    cv.log.scrollTop = cv.log.scrollHeight;
+  }
+
+  function setConveyorKeys() {
+    const on = !!conv.client && !conv.checking;
+    cv.keys.forEach((b) => { b.disabled = !on; });
+    cv.check.disabled = !on;
+    cv.close.disabled = !conv.client;
+  }
+
+  function renderConveyor() {
+    const c = conv.client;
+    if (!c) { cv.state.textContent = '연결하지 않았습니다.'; return; }
+    const i = c.caps;
+    const s = c.state || {};
+    const caps = i ? ['speed', 'sensor', 'autostop', 'button'].filter((k) => i[k]).map((k) => ({ speed: '속도 조절', sensor: '부품 센서', autostop: '스스로 멈추기', button: '정지 단추' })[k]) : [];
+    const lines = [];
+    lines.push(i ? '규약 ' + i.proto + ' · ' + (i.name || '?') + ' ' + (i.fw || '') + ' · 기능: ' + (caps.join(', ') || '없음') + ' · 감시 ' + (i.watchdogMs ? i.watchdogMs + 'ms' : '?') : 'INFO를 아직 받지 못했습니다.');
+    lines.push('상태: ' + (STATE_WORD[s.state] || s.state || '?') + (s.reason ? ' (' + (REASON_WORD[s.reason] || s.reason) + (s.code ? ' ' + s.code : '') + ')' : '')
+      + ' · 속도 ' + (typeof s.speed === 'number' ? s.speed + '%' : '–')
+      + ' · 센서 ' + (s.part === null || s.part === undefined ? '–' : s.part ? '부품 있음' : '비어 있음')
+      + ' · 스스로 멈추기 ' + (s.autostop ? '켜짐' : '꺼짐'));
+    if (conv.lastEvent) lines.push('마지막 알림: ' + conv.lastEvent);
+    if (c.lost) lines.push('응답이 없습니다 (3번 이어서). 선과 전원을 확인하세요.');
+    cv.state.textContent = lines.join('\n');
+    const auto = cv.keys.find((b) => b.dataset.cv === 'autostop');
+    auto.setAttribute('aria-pressed', String(!!s.autostop));
+  }
+
+  async function conveyorDisconnect() {
+    const c = conv.client;
+    conv.client = null;
+    conv.lastEvent = null;
+    if (c) await c.close();
+    setConveyorKeys();
+    renderConveyor();
+  }
+
+  async function conveyorConnect(fake) {
+    await conveyorDisconnect();
+    cv.checks.textContent = '';
+    try {
+      conv.link = fake ? CV.fakeLink({ bootMs: 400 }) : await FT.openSerial({ baudRate: 115200 });
+    } catch (err) {
+      if (err.code === 'NO_WEB_SERIAL') cv.port.textContent = '이 브라우저는 USB 포트를 못 엽니다. Chrome·Edge에서 http://localhost 로 여세요.';
+      else if (err.name === 'NotFoundError') cv.port.textContent = '포트를 고르지 않았습니다.';
+      else cv.port.textContent = '포트를 열지 못했습니다(' + (err.name || err.message) + '). 서버나 시리얼 콘솔이 이 포트를 쓰고 있는지 확인하세요.';
+      return;
+    }
+    const c = new CV.Client(conv.link, { readyWaitMs: 3000 });
+    conv.client = c;
+    c.on((kind, data) => {
+      if (kind === 'line') {
+        // 0.25초마다 오가는 살아 있음 신호(PING과 그 OK)는 줄 기록에 남기지 않는다
+        if (data.dir === 'out' && data.text === 'PING') { conv.pingPending = true; return; }
+        if (data.dir === 'in' && conv.pingPending && data.text === 'OK') { conv.pingPending = false; return; }
+        conv.pingPending = false;
+        cvLog((data.dir === 'out' ? '→ ' : '← ') + data.text);
+      }
+      if (kind === 'event') conv.lastEvent = data.line;
+      if (['state', 'part', 'event', 'lost', 'back', 'ready'].includes(kind)) renderConveyor();
+    });
+    cv.port.textContent = (fake ? '가짜 컨베이어에 연결했습니다.' : '연결: USB ' + (conv.link.usb || '?') + (conv.link.chip ? ' (' + conv.link.chip + ')' : '') + ', 115200bps.')
+      + ' 켜짐 알림(!READY)을 기다리는 중…';
+    setConveyorKeys();
+    try {
+      await c.open();
+      cv.port.textContent = cv.port.textContent.replace(' 켜짐 알림(!READY)을 기다리는 중…', c.readyFields ? '' : ' 켜짐 알림이 없었습니다 (리셋되지 않는 보드면 괜찮음).');
+    } catch (err) {
+      cv.port.textContent += ' — 규약대로 답하지 않습니다(' + err.code + '). 아래 규약 점검으로 무엇이 다른지 보세요.';
+    }
+    renderConveyor();
+  }
+
+  // 명령 하나 — 결과를 줄 기록에 남기고 상태를 다시 묻는다
+  async function conveyorCommand(name) {
+    const c = conv.client;
+    if (!c) return;
+    try {
+      if (name === 'speed') await c.speed(Math.max(0, Math.min(100, Number(cv.speed.value) || 0)));
+      else if (name === 'autostop') await c.autostop(!(c.state && c.state.autostop));
+      else await c[name]();
+      await c.status();
+    } catch (err) {
+      cvLog('   (' + ({ HALTED: '잠겨 있어 거절 — 잠금 풀기를 먼저', UNSUPPORTED: '이 컨베이어에 없는 기능', TIMEOUT: '응답 없음', BAD_ARG: '값이 범위 밖' }[err.code] || err.code) + ')');
+    }
+    renderConveyor();
+  }
+
+  cv.connect.addEventListener('click', () => conveyorConnect(false));
+  cv.fake.addEventListener('click', () => conveyorConnect(true));
+  cv.close.addEventListener('click', async () => { await conveyorDisconnect(); cv.port.textContent = '연결을 끊었습니다.'; });
+  cv.keys.forEach((b) => b.addEventListener('click', () => conveyorCommand(b.dataset.cv)));
+  cv.check.addEventListener('click', async () => {
+    if (!conv.client) return;
+    conv.checking = true;
+    setConveyorKeys();
+    cv.checks.textContent = '';
+    const items = [];
+    const kind = (ok) => (ok === true ? 'ok' : ok === false ? 'bad' : 'warn');
+    try {
+      await CV.check(conv.client, {
+        motion: cv.motion.checked,
+        onStep: (r) => { items.push([kind(r.ok), r.title + (r.note ? ' — ' + r.note : '')]); checks(cv.checks, items); },
+      });
+    } finally {
+      conv.checking = false;
+      setConveyorKeys();
+      renderConveyor();
+    }
+    const bad = items.filter((x) => x[0] === 'bad').length;
+    items.push([bad ? 'bad' : 'ok', bad ? bad + '개가 규약과 다릅니다. 위 줄을 보고 스케치를 고치세요.' : '규약대로 답합니다.']);
+    checks(cv.checks, items);
+  });
+
+  // ---------- 4. 시리얼 콘솔 ----------
 
   const se = { baud: $('ser-baud'), connect: $('ser-connect'), close: $('ser-close'), input: $('ser-input'), eol: $('ser-eol'), send: $('ser-send'), out: $('ser-out') };
   let serial = null;
@@ -365,5 +534,5 @@
   se.send.addEventListener('click', sendLine);
   se.input.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendLine(); });
 
-  window.addEventListener('beforeunload', () => { servoDisconnect(); stopCam(); if (serial) serial.close().catch(() => {}); });
+  window.addEventListener('beforeunload', () => { servoDisconnect(); conveyorDisconnect(); stopCam(); if (serial) serial.close().catch(() => {}); });
 })();

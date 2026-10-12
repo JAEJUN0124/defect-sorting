@@ -1,4 +1,4 @@
-// 서버 연결 — 명령을 보내고 실시간 메시지를 받아, adapter.js로 모양을 맞춰 화면에 넘깁니다 (docs/API.md v0.2).
+// 서버 연결 — 명령을 보내고 실시간 메시지를 받아, adapter.js로 모양을 맞춰 화면에 넘깁니다 (docs/API.md v0.3).
 // 연결 방식(push·commands)은 config.js의 server 설정으로 고릅니다 (transport.js).
 // useMock이 true면 같은 모양의 가짜 서버(mock-server.js, 탭 사이 공유는 mock-hub.js)로 바꿔 끼웁니다.
 (function () {
@@ -28,14 +28,24 @@
   let nextCommand = 1;
   const pendingCommands = new Map();
 
+  // GET 명령의 값은 주소 뒤에 붙인다 (?after=…). 실시간 연결로 보낼 때는 본문에 담는다 (docs/API.md 6장)
+  function withQuery(path, params) {
+    const q = Object.entries(params || {})
+      .filter(([, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+      .join('&');
+    return q ? path + (path.includes('?') ? '&' : '?') + q : path;
+  }
+
   // 명령 하나를 보내고 { status, body }를 받는다
   function send(name, body) {
     if (mock) {
       const r = T.route({}, name); // 가짜 서버는 늘 기본 경로를 쓴다
-      return mock.request(r.method, r.path, body);
+      return r.method === 'GET' ? mock.request(r.method, withQuery(r.path, body)) : mock.request(r.method, r.path, body);
     }
     if (cfg.server.commands === 'ws') return wsCommand(name, body);
     const r = T.route(cfg.server, name);
+    if (r.method === 'GET') return T.httpRequest(cfg, r.method, withQuery(r.path, body));
     return T.httpRequest(cfg, r.method, r.path, body);
   }
 
@@ -114,6 +124,15 @@
       }
     },
     getStatus: async () => adapter.status(await call('status')),
+    // 지난 기록(v0.3): { after, events, inspections, minutes }. 기록 조회가 없는 서버면 null
+    async getHistory(params) {
+      try {
+        return adapter.history(await call('history', params));
+      } catch (err) {
+        if ([404, 405, 501].includes(err.status) || err.code === 'UNSUPPORTED') return null;
+        throw err;
+      }
+    },
     start: () => call('start', cfg.server.startBody || undefined),
     stop: () => call('stop'),
     estop: () => call('estop'),

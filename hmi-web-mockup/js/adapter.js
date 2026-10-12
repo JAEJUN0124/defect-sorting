@@ -1,4 +1,4 @@
-// 서버 형식 맞추기 — 서버가 어떤 모양으로 보내도 HMI 안에서는 한 가지 모양(docs/API.md v0.2)으로 바꿔 씁니다.
+// 서버 형식 맞추기 — 서버가 어떤 모양으로 보내도 HMI 안에서는 한 가지 모양(docs/API.md v0.3)으로 바꿔 씁니다.
 // 서버 담당이 이름·단위·묶음 방식을 다르게 정해도 화면 코드는 고치지 않고, 여기서 흡수합니다.
 // 무엇을 바꿨는지는 notes()에 쌓입니다. tools/server-check.html이 이 기록으로 "서버가 어떤 형식인지" 보여 줍니다.
 // 대응표: docs/server-cases.md
@@ -47,6 +47,19 @@
   const MODE = {
     auto: ['auto', 'automatic', 'autonomous', 'policy', 'ai', 'autorun', 'automode', '자동'],
     manual: ['manual', 'teleop', 'teleoperation', 'hand', 'jog', 'manualmode', '수동'],
+  };
+  // 공정 단계 (상태 cycle.stage, docs/line-sequence.md 1장)
+  const STAGE = {
+    feeding: ['feeding', 'feed', 'conveying', 'transport', 'waitingpart', 'waitpart', 'loading', 'moving', 'indexing'],
+    inspecting: ['inspecting', 'inspect', 'inspection', 'judging', 'judge', 'capturing', 'capture', 'detecting', 'settling'],
+    sorting: ['sorting', 'sort', 'picking', 'pick', 'removing', 'rejecting', 'reject'],
+    passing: ['passing', 'pass', 'ejecting', 'eject', 'unloading', 'discharging', 'outfeed'],
+  };
+  // 고장이 풀리는 방법 (fault.clear, docs/API.md 3.1)
+  const CLEAR = {
+    auto: ['auto', 'automatic', 'self', 'condition', 'none'],
+    home: ['home', 'homing', 'origin', 'rehome'],
+    start: ['start', 'ack', 'acknowledge', 'confirm', 'restart', 'operator'],
   };
   const DEVICE = {
     conveyor: ['conveyor', 'belt', 'arduino', 'conveyorbelt', 'plc', 'conveyorarduino'],
@@ -184,6 +197,8 @@
       return d.toISOString();
     }
     const timeOf = (obj) => time(val(obj, ['at', 'time', 'timestamp', 'ts', 'datetime', 'date', 'created', 'createdat', 'stamp'], 'at'));
+    // 판정·이벤트의 순번(v0.3). 서버를 켤 때부터 하나씩 늘어난다
+    const seqOf = (obj) => num(val(obj, ['seq', 'sequence', 'seqno', 'cursor']));
 
     // ---------- 장치 ----------
     function cameraIdOf(raw) {
@@ -305,7 +320,7 @@
 
     function fault(raw) {
       if (raw === null || raw === undefined || raw === false || raw === '' || raw === 0) return null;
-      if (typeof raw === 'string') return { code: codeOf(raw), params: {} };
+      if (typeof raw === 'string') return { code: codeOf(raw), params: {}, clear: 'auto' };
       if (isObj(raw)) {
         const code = val(raw, ['code', 'error', 'name', 'id', 'type', 'reason']);
         if (!code) return null;
@@ -313,9 +328,27 @@
         const message = val(raw, ['message', 'msg', 'text', 'description']);
         const out = { code: codeOf(code), params: isObj(params) ? params : {} };
         if (typeof message === 'string') out.message = message;
+        // 풀리는 방법(v0.3). 없거나 모르는 값이면 auto(원인이 사라지면 풀림)
+        const clear = val(raw, ['clear', 'clearby', 'clearedby', 'recovery', 'release', 'reset']);
+        out.clear = (typeof clear === 'string' && mapWord(clear, CLEAR, 'fault.clear')) || 'auto';
         return out;
       }
-      return { code: 'FAULT', params: {} };
+      return { code: 'FAULT', params: {}, clear: 'auto' };
+    }
+
+    // 공정 단계(v0.3): { stage, part, step } 또는 null(가동 중이 아님). 글자 하나로 와도 단계로 읽는다
+    function cycle(raw) {
+      if (raw === null || raw === undefined || raw === false || raw === '') return null;
+      if (typeof raw === 'string') return { stage: mapWord(raw, STAGE, 'cycle.stage') || raw, part: null, step: null };
+      if (!isObj(raw)) return null;
+      const stage = val(raw, ['stage', 'phase', 'state']);
+      const part = val(raw, ['part', 'partid', 'id', 'item', 'inspection']);
+      const step = val(raw, ['step', 'task', 'action', 'substep']);
+      return {
+        stage: typeof stage === 'string' ? mapWord(stage, STAGE, 'cycle.stage') || stage : null,
+        part: part === undefined ? null : part,
+        step: typeof step === 'string' && step ? step : null,
+      };
     }
 
     // 상태는 바뀐 부분만 와도 된다. 온 필드만 돌려주고, 합치는 일은 store.js가 한다
@@ -334,7 +367,7 @@
         const word = mapWord(line.value, LINE, 'line');
         if (word) out.line = word;
         else if (LINE_ESTOP.includes(c)) { out.line = 'stopped'; out.estop = true; note('line.estop_as_state'); }
-        else if (LINE_FAULT.includes(c)) { out.line = 'stopped'; out.fault = { code: 'LINE_FAULT', params: {} }; note('line.fault_as_state'); }
+        else if (LINE_FAULT.includes(c)) { out.line = 'stopped'; out.fault = { code: 'LINE_FAULT', params: {}, clear: 'auto' }; note('line.fault_as_state'); }
         else { out.line = 'unknown'; out.lineRaw = line.value; note('line.unknown:' + line.value); }
       }
       const estop = pick(raw, ['estop', 'estopactive', 'emergency', 'emergencystop', 'ems', 'estopped', 'emergencystopactive', 'estoplatched'], 'estop');
@@ -364,6 +397,10 @@
       if (f) out.fault = fault(f.value);
       const started = pick(raw, ['startedat', 'runstartedat', 'since', 'runningsince', 'starttime', 'linestartedat']);
       if (started) out.startedAt = time(started.value);
+      const home = pick(raw, ['homerequired', 'needshome', 'homingrequired', 'homeneeded', 'requireshome', 'musthome'], 'home_required');
+      if (home) { const b = bool(home.value); if (b !== null) out.homeRequired = b; }
+      const cyc = pick(raw, ['cycle', 'process', 'cyclestate', 'processstage', 'stage'], 'cycle');
+      if (cyc) out.cycle = cycle(cyc.value);
       return out;
     }
 
@@ -422,6 +459,8 @@
       const out = { result: resultOf(raw), at: timeOf(raw) };
       const id = val(raw, ['id', 'partid', 'seq', 'sequence', 'count', 'index', 'no', 'number', 'serial', 'itemid'], 'id');
       if (id !== undefined && id !== null) out.id = id;
+      const seq = seqOf(raw);
+      if (seq !== null) out.seq = seq;
       const conf = num(val(raw, ['confidence', 'conf', 'score', 'prob', 'probability', 'certainty'], 'confidence'));
       if (conf !== null) {
         out.confidence = conf > 1 && conf <= 100 ? round(conf / 100, 4) : conf;
@@ -473,6 +512,8 @@
       const params = val(raw, ['params', 'parameters', 'args', 'arguments', 'data', 'details', 'payload', 'extra', 'context'], 'params');
       const text = val(raw, ['message', 'msg', 'text', 'description', 'detail', 'desc']);
       const out = { code: code ? eventCode(code) : 'unknown', level: 'info', params: isObj(params) ? Object.assign({}, params) : {}, at: timeOf(raw) };
+      const seq = seqOf(raw);
+      if (seq !== null) out.seq = seq;
       if (typeof lvl === 'string') {
         const l = mapWord(lvl, LEVEL, 'event.level');
         if (l) out.level = l; else note('event.level.unknown:' + lvl);
@@ -713,6 +754,31 @@
       return out;
     }
 
+    // ---------- 지난 기록 (GET /history, v0.3) ----------
+    // { runId, now, lastSeq, events: [이벤트], inspections: [판정], minutes: [{ t, good, defect }] | null } — 기록은 오래된 것부터
+    function history(raw) {
+      const out = { runId: null, now: null, lastSeq: null, events: [], inspections: [], minutes: null };
+      if (!isObj(raw)) return out;
+      const run = val(raw, ['runid', 'run', 'bootid', 'boot', 'session', 'sessionid', 'epoch', 'instance']);
+      if (run !== undefined && run !== null && run !== '') out.runId = String(run);
+      out.now = time(val(raw, ['now', 'servertime', 'time', 'at', 'timestamp']));
+      out.lastSeq = num(val(raw, ['lastseq', 'seq', 'last', 'cursor', 'head']));
+      const bySeq = (a, b) => (a.seq === undefined || b.seq === undefined ? 0 : a.seq - b.seq);
+      const evs = val(raw, ['events', 'logs', 'log', 'alarms']);
+      if (Array.isArray(evs)) out.events = evs.map(event).filter(Boolean).sort(bySeq);
+      const ins = val(raw, ['inspections', 'results', 'judgements', 'judgments', 'detections']);
+      if (Array.isArray(ins)) out.inspections = ins.map(inspection).filter(Boolean).sort(bySeq);
+      const mins = val(raw, ['minutes', 'perminute', 'buckets', 'timeline']);
+      if (Array.isArray(mins)) {
+        out.minutes = mins.filter(isObj).map((b) => {
+          const t = time(val(b, ['t', 'time', 'minute', 'start', 'at', 'ts']));
+          const s = stats(b);
+          return t && s ? { t, good: s.good, defect: s.defect } : null;
+        }).filter(Boolean);
+      }
+      return out;
+    }
+
     // ---------- 오류 응답 ----------
     function codeOf(raw) {
       const s = String(raw).trim();
@@ -854,6 +920,8 @@
       commandResult,
       error,
       time,
+      history,
+      cycle,
       info: infoOf,
       deviceId,
       jointId,

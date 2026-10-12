@@ -141,9 +141,10 @@
     const adapter = window.HmiAdapter.create({ naiveTime: cfg.server.naiveTime, primaryCamera: 'auto' });
     const mock = useMock ? new window.MockServer() : null;
     const results = [];
-    const request = async (name) => {
+    const request = async (name, query) => {
       const r = T.route(useMock ? {} : cfg.server, name);
-      return mock ? mock.request(r.method, r.path) : T.httpRequest(cfg, r.method, r.path);
+      const path = query ? r.path + (r.path.includes('?') ? '&' : '?') + new URLSearchParams(query).toString() : r.path;
+      return mock ? mock.request(r.method, path) : T.httpRequest(cfg, r.method, path);
     };
     const show = () => list(el.checks, results);
     el.rows.textContent = '';
@@ -191,6 +192,9 @@
         if (!st.line) results.push(['bad', '상태에 라인 상태(line)가 없습니다. 화면이 상태를 그릴 수 없습니다.']);
         if (st.estop === undefined) results.push(['warn', '상태에 긴급정지 여부(estop)가 없습니다. 긴급정지 표시를 못 합니다.']);
         if (!st.devices) results.push(['warn', '상태에 장치 연결(devices)이 없습니다. 시작 실패 이유를 화면에 쓰기 어렵습니다.']);
+        results.push(st.cycle !== undefined || st.homeRequired !== undefined
+          ? ['ok', `v0.3 상태: 공정 단계(cycle) ${st.cycle !== undefined ? '있음' : '없음'}, 원점 필요(home_required) ${st.homeRequired !== undefined ? '있음' : '없음'}.`]
+          : ['info', '상태에 공정 단계(cycle)·원점 필요(home_required)가 없습니다 (v0.3). 없어도 동작하지만 대시보드 공정 흐름은 가동 여부만 보입니다.']);
         // 영상 주소 열어 보기 (MJPEG·JPEG만 여기서 시험, 나머지는 장치 점검의 '서버 영상 주소 시험')
         const cams = Object.entries(st.cameras || {});
         for (const [id, c] of cams) {
@@ -222,6 +226,27 @@
       } else {
         const e = adapter.error(res.status, res.body);
         results.push(['bad', `상태 요청이 ${res.status}(${e.code})로 끝났습니다. config.js server.paths.status를 확인하세요.`]);
+      }
+      show();
+
+      // 2-1. 지난 기록 (v0.3, docs/API.md 5.2)
+      el.progress.textContent = '지난 기록을 묻는 중…';
+      try {
+        const hr = await request('history', { events: 5, inspections: 5, minutes: 10 });
+        if (hr.status >= 200 && hr.status < 300) {
+          const h = adapter.history(hr.body);
+          const noSeq = h.events.concat(h.inspections).filter((x) => x.seq === undefined).length;
+          results.push(['ok', `지난 기록(GET /history): 이벤트 ${h.events.length}·판정 ${h.inspections.length}건, 분당 집계 ${h.minutes ? h.minutes.length + '분' : '없음'}, 마지막 순번 ${h.lastSeq === null ? '없음' : h.lastSeq}.`]);
+          if (!h.runId) results.push(['warn', '기록 응답에 run_id가 없습니다. 서버를 다시 켜 순번이 처음부터 시작되면 HMI가 알아채지 못해 기록이 빠질 수 있습니다.']);
+          if (noSeq) results.push(['warn', `기록 ${noSeq}건에 순번(seq)이 없습니다. 다시 연결할 때 빈 곳만 채울 수 없습니다.`]);
+          if (!h.now) results.push(['info', '기록 응답에 서버 시각(now)이 없습니다. 서버와 이 PC의 시계가 다르면 분당 그래프가 밀릴 수 있습니다.']);
+        } else if ([404, 405, 501].includes(hr.status)) {
+          results.push(['info', '지난 기록(GET /history)이 없습니다. 화면을 새로 열거나 서버에 다시 붙으면 그 전 기록이 비어 보입니다 (v0.3 권장 기능).']);
+        } else {
+          results.push(['warn', `지난 기록 요청이 ${hr.status}로 끝났습니다. 경로가 다르면 config.js server.paths.history로 맞추세요.`]);
+        }
+      } catch (err) {
+        results.push(['warn', '지난 기록 요청에 답이 없습니다.']);
       }
       show();
 
@@ -276,6 +301,8 @@
         results.push(['ok', `실시간 메시지: ${stat.kind} 방식으로 ${stat.messages}개를 받았습니다.`]);
         const quick = stat.statusAt !== null && stat.statusAt - stat.startedAt <= 1000;
         results.push(quick ? ['ok', '연결하고 1초 안에 상태를 보냅니다.'] : ['info', '연결 직후 상태를 보내지 않습니다. HMI가 연결되면 GET /status로 묻기 때문에 괜찮습니다.']);
+        const unnumbered = ['event', 'inspection'].filter((ty) => stat.last[ty] && stat.last[ty].seq === undefined);
+        if (unnumbered.length) results.push(['info', `실시간 ${unnumbered.join('·')} 메시지에 순번(seq)이 없습니다 (v0.3). 없어도 동작하지만 다시 연결할 때 겹치거나 빠진 기록을 가려내지 못합니다.`]);
       }
       let hbAvg = null;
       if (stat.hb.length >= 2) {
@@ -299,7 +326,7 @@
 
       // HMI가 맞춘 것
       const notes = adapter.notes();
-      list(el.notes, notes.length ? notes.map((n) => { const [kind, text] = explain(n.code); return [kind, text + (n.count > 1 ? ` (${n.count}번)` : '')]; }) : [['ok', '서버가 기준 형식(docs/API.md v0.2) 그대로 보냅니다. 맞출 것이 없습니다.']]);
+      list(el.notes, notes.length ? notes.map((n) => { const [kind, text] = explain(n.code); return [kind, text + (n.count > 1 ? ` (${n.count}번)` : '')]; }) : [['ok', '서버가 기준 형식(docs/API.md v0.3) 그대로 보냅니다. 맞출 것이 없습니다.']]);
 
       // config.js에 넣을 값
       const codes = notes.map((n) => n.code);

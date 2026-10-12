@@ -202,6 +202,10 @@
       case 'event':
         if (data && !LOG_SKIP.includes(data.code)) pushLog(data);
         break;
+      case 'history': // 지난 기록을 채웠다 (분당 판정은 서버 집계로 바뀜)
+        renderTally();
+        if (['overview', 'production', 'inspection', 'system'].includes(ui.tab)) renderPage();
+        break;
       case 'telemetry':
         recordArm(data);
         updateActive();
@@ -258,8 +262,9 @@
       detail = t(robot.hardwareStop === 'button' ? 'estop.offline.button' : 'estop.offline.dc');
       error = true;
     }
-    else if (fault) { detail = t('detail.fault', { fault: store.faultText(st.fault) }); error = true; }
+    else if (fault) { detail = store.faultDetail(st.fault); error = true; }
     else if (p === 'running') detail = t('db.detail.running', { mode: modeWord(), duration: duration() });
+    else if (p === 'stopped' && st.homeRequired) detail = t('detail.homeRequired');
     else if (p === 'stopped') detail = t('db.detail.stopped', { mode: modeWord() });
     else if (p === 'estop') detail = t('db.detail.estop');
     else if (p === 'unknown') detail = t('detail.unknown', { state: st.lineRaw });
@@ -535,9 +540,13 @@
   function pushLog(evt) {
     const at = evt.at ? Date.parse(evt.at) : Date.now();
     const entry = { at: Number.isNaN(at) ? Date.now() : at, level: evt.level || 'info', code: evt.code, text: store.eventText(evt), local: !!evt.local };
-    ui.log.unshift(entry);
+    // 시각 차례로 끼운다 — 다시 연결될 때 채운 기록이 끊겼던 동안의 자리에 들어가게 (새것이 앞)
+    let i = 0;
+    while (i < ui.log.length && ui.log[i].at > entry.at) i += 1;
+    ui.log.splice(i, 0, entry);
     if (ui.log.length > LOG_KEEP) ui.log.pop();
-    if (ui.tab !== 'alarms' && RANK[entry.level]) ui.unseen[entry.level] += 1;
+    // 화면을 열며 채운 지난 기록(restored)은 확인하지 않은 경보로 세지 않는다
+    if (ui.tab !== 'alarms' && RANK[entry.level] && !evt.restored) ui.unseen[entry.level] += 1;
     renderBadges();
     renderFoot();
     if (ui.tab === 'alarms') renderLog();
@@ -577,14 +586,20 @@
     const on = online() && !!st;
     const p = phase();
     const unknown = t('dbt.dev.unknown');
+    // 서버가 공정 단계(cycle)를 알려 주면 지금 일하는 칸을 표시한다 (docs/line-sequence.md 1장). 모르면(v0.2) 가동 여부만
+    const stage = on && p === 'running' && st.cycle ? st.cycle.stage : null;
     el.flow.dataset.flowing = String(p === 'running');
+    el.flow.dataset.stage = stage || '';
+    const active = { conveyor: stage === 'feeding' || stage === 'passing', camera: stage === 'inspecting', judge: stage === 'inspecting', arm: stage === 'sorting' };
+    Object.entries(active).forEach(([k, on2]) => { el.st[k].dataset.active = String(on2); });
 
-    // 컨베이어
+    // 컨베이어 — 부품마다 멈추는 운전이면 판정·분류하는 동안 서 있다
     let state = unknown;
     let level = null;
     if (on) {
       if (st.devices.conveyor === 'disconnected') { state = t('devices.disconnected'); level = 'warning'; }
       else if (p === 'estop') { state = t('dbt.flow.halted'); level = 'alarm'; }
+      else if (stage) state = active.conveyor ? store.stageName(stage) : t('dbt.flow.halted');
       else state = t(p === 'running' ? 'state.running' : 'state.stopped');
     }
     f(el.st.conveyor, 'state').textContent = state;
@@ -645,7 +660,7 @@
 
     // 판정
     const last = store.state.inspections[0];
-    f(el.st.judge, 'state').textContent = on ? t(p === 'running' ? 'dbt.flow.judging' : 'dbt.flow.idle') : unknown;
+    f(el.st.judge, 'state').textContent = on ? t((stage ? stage === 'inspecting' : p === 'running') ? 'dbt.flow.judging' : 'dbt.flow.idle') : unknown;
     f(el.st.judge, 'latency').textContent = ui.latency === null ? '–' : Math.round(ui.latency) + 'ms';
     const conf = f(el.st.judge, 'conf');
     conf.textContent = last && last.result
@@ -664,6 +679,7 @@
       else if (!ms.length) armState = '–';
       else if (ms.every((m) => m.torque === false)) armState = t('dbt.arm.limp');
       else if (st.mode === 'manual' && p === 'running') armState = t('dbt.arm.follow'); // 수동: 사람이 움직이는 리더암을 따라간다
+      else if (stage === 'sorting') armState = st.cycle.step ? store.stepName(st.cycle.step) : store.stageName(stage); // 작업의 지금 단계
       else if (ms.some((m) => m.moving)) armState = t('dbt.arm.moving');
       else armState = t('dbt.arm.idle');
       armLevel = worse(armLevel, ui.active.filter((c) => c.area === 'arm' && c.key !== 'dev.arm').reduce((w, c) => worse(w, c.level), null));
@@ -879,15 +895,18 @@
     // state: 'ok' · 'bad'(막힘) · 'unknown'(아직 모름 — 색을 입히지 않는다) · 'skip'(이 모드에서는 필요 없음)
     const add = (key, label, state, text, fix) => rows.push({ key, label, state, text, fix });
     const known = (ok, okText, badText) => (on ? [ok ? 'ok' : 'bad', ok ? okText : badText] : ['unknown', t('dbt.dev.unknown')]);
-    // 왼쪽 줄: 상태 네 가지
+    // 왼쪽 줄: 상태 다섯 가지
     if (online()) add('server', t('ctl.cond.server'), 'ok', t('dbt.devices.connected'), '');
     else if (!store.state.everConnected) add('server', t('ctl.cond.server'), 'unknown', t('state.connecting'), '');
     else add('server', t('ctl.cond.server'), 'bad', t('devices.disconnected'), t('ctl.cond.fixServer'));
     add('estop', t('ctl.cond.estop'), ...known(on && !st.estop, t('ctl.cond.released'), t('ctl.cond.latched')), t('ctl.cond.fixEstop'));
-    add('fault', t('ctl.cond.fault'), ...known(on && !st.fault, t('ctl.cond.none'), t('ctl.cond.some')),
-      on && st.fault ? t('detail.fault', { fault: store.faultText(st.fault) }) : t('ctl.cond.fixFault'));
+    // 확인하고 시작하면 풀리는 고장(clear: start)은 시작을 막지 않는다 (docs/API.md 3.1)
+    const ackOnStart = on && !!st.fault && st.fault.clear === 'start';
+    add('fault', t('ctl.cond.fault'), ...known(on && (!st.fault || ackOnStart), ackOnStart ? t('ctl.cond.ackOnStart') : t('ctl.cond.none'), t('ctl.cond.some')),
+      on && st.fault ? store.faultDetail(st.fault) : t('ctl.cond.fixFault'));
     const powerBad = ['arm'].concat(manual ? ['leader'] : []).some((arm) => supplyLevel(supplyOf(arm), supplyCfg(arm)) === 'alarm');
     add('power', t('ctl.cond.power'), ...known(!powerBad, t('ctl.cond.normal'), t('ctl.cond.abnormal')), t('ctl.cond.fixPower'));
+    add('home', t('ctl.cond.home'), ...known(on && !st.homeRequired, t('ctl.cond.homeOk'), t('ctl.cond.homeNeeded')), t('ctl.cond.fixHome'));
     // 오른쪽 줄: 운전 모드에 필요한 장치 (리더암은 수동에서만). 서버가 아직 알려 주지 않은 장치도 '모름'
     const primary = 'camera_' + store.primaryCamera();
     ['conveyor', 'arm', primary, 'leader'].forEach((id) => {
@@ -1274,7 +1293,7 @@
       if (src && TRANSPORT[src.transport]) parts.push(t(TRANSPORT[src.transport]));
       c.meta.textContent = parts.join(', ');
     });
-    sim.setBelt(!!S() && S().line === 'running');
+    sim.setLine(!!S() && S().line === 'running', S() && S().cycle ? S().cycle.stage : null);
   }
 
   function renderInspection() {
@@ -1723,6 +1742,14 @@
 
   const PUSH = { ws: 'WebSocket', socketio: 'Socket.IO', sse: 'SSE', poll: 'dbt.sys.poll' };
 
+  // 지난 기록(GET /history)을 서버가 주는지 — 주지 않으면 이 화면을 연 뒤 받은 것만 보인다
+  function historyText() {
+    const h = store.state.history;
+    if (h.supported === true) return t('dbt.sys.historyOn', { n: h.restored });
+    if (h.supported === false) return t('dbt.sys.historyOff');
+    return t('dbt.sys.historyUnknown');
+  }
+
   function renderSystem() {
     const push = cfg.server.push;
     const pushLabel = PUSH[push] && PUSH[push].startsWith('dbt.') ? t(PUSH[push]) : PUSH[push] || push;
@@ -1735,6 +1762,7 @@
       [t('dbt.sys.commands'), cfg.useMock ? t('dbt.sys.unused') : t(cfg.server.commands === 'ws' ? 'dbt.sys.cmdWs' : 'dbt.sys.cmdHttp')],
       [t('dbt.sys.lastMessage'), store.state.lastMessageAt ? clock(store.state.lastMessageAt, true) : null],
       [t('dbt.sys.timeout'), t('dbt.sys.timeoutValue', { s: cfg.heartbeatTimeoutMs / 1000 })],
+      [t('dbt.sys.history'), historyText()],
     ]);
 
     const info = store.state.info;

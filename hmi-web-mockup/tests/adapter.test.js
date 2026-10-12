@@ -59,10 +59,10 @@ test('한 겹 싸인 상태, 상태 글자로 온 긴급정지·고장, 모르�
   assert.equal(a.status({ status: { line: 'running' } }).line, 'running');
   assert.equal(a.status({ state: { line: 'homing' } }).line, 'homing');
   assert.deepEqual(a.status({ state: 'EMERGENCY_STOP' }), { line: 'stopped', estop: true });
-  assert.deepEqual(a.status({ line: 'fault' }), { line: 'stopped', fault: { code: 'LINE_FAULT', params: {} } });
+  assert.deepEqual(a.status({ line: 'fault' }), { line: 'stopped', fault: { code: 'LINE_FAULT', params: {}, clear: 'auto' } });
   assert.deepEqual(a.status({ line: 'calibrating' }), { line: 'unknown', lineRaw: 'calibrating' });
   assert.deepEqual(a.status({ mode: 'learning' }), { mode: 'unknown', modeRaw: 'learning' });
-  assert.deepEqual(a.status({ fault: 'servo overheat' }).fault, { code: 'SERVO_OVERHEAT', params: {} });
+  assert.deepEqual(a.status({ fault: 'servo overheat' }).fault, { code: 'SERVO_OVERHEAT', params: {}, clear: 'auto' });
   assert.equal(a.status({ fault: null }).fault, null);
 });
 
@@ -252,4 +252,49 @@ test('서버 정보·성능·영상 조각·명령 응답', () => {
   assert.deepEqual(one(a, { type: 'frame', data: { camera: 'cam_side', data: 'data:image/jpeg;base64,AAAA' } }).data, { camera: 'side', mime: 'image/jpeg', data: 'AAAA', url: null, at: null });
   assert.deepEqual(one(a, { type: 'ack', data: { id: 4, ok: false, error: 'NOT_STOPPED' } }).data, { id: 4, status: 409, body: { error: 'NOT_STOPPED' } });
   assert.deepEqual(one(a, { type: 'command_result', data: { id: 5, status: 200, body: { line: 'running' } } }).data, { id: 5, status: 200, body: { line: 'running' } });
+});
+
+test('v0.3 상태: 공정 단계·원점 필요·고장이 풀리는 방법', () => {
+  const a = make();
+  const st = a.status({ line: 'running', home_required: false, cycle: { stage: 'sorting', part: 812, step: 'grasp_part' } });
+  assert.deepEqual(st.cycle, { stage: 'sorting', part: 812, step: 'grasp_part' });
+  assert.equal(st.homeRequired, false);
+  assert.equal(a.status({ cycle: null }).cycle, null);
+  assert.deepEqual(a.status({ process: 'PICKING' }).cycle, { stage: 'sorting', part: null, step: null });
+  assert.equal(a.status({ cycle: { phase: 'judging' } }).cycle.stage, 'inspecting');
+  assert.equal(a.status({ needs_home: 'true' }).homeRequired, true);
+  assert.deepEqual(a.status({ fault: { code: 'GRIP_FAILED', params: { step: 'pick' }, clear: 'home' } }).fault, { code: 'GRIP_FAILED', params: { step: 'pick' }, clear: 'home' });
+  assert.equal(a.status({ fault: { code: 'PART_STUCK', clear: 'ACK' } }).fault.clear, 'start');
+  assert.equal(a.status({ fault: { code: 'X', clear: 'whenever' } }).fault.clear, 'auto');
+});
+
+test('v0.3 순번: 판정·이벤트의 seq', () => {
+  const a = make();
+  assert.equal(one(a, { type: 'inspection', data: { seq: 1532, id: 812, result: 'good' } }).data.seq, 1532);
+  assert.equal(one(a, { type: 'event', data: { seq: 1533, code: 'line_started', level: 'info' } }).data.seq, 1533);
+  assert.equal(one(a, { type: 'event', data: { code: 'line_started' } }).data.seq, undefined);
+});
+
+test('v0.3 기록 조회 응답: 오래된 것부터, 분당 집계, 다른 이름', () => {
+  const a = make();
+  const h = a.history({
+    run_id: 20261012, now: '2026-10-12T14:32:05+09:00', last_seq: 1532,
+    events: [{ seq: 1520, code: 'MODE_CHANGED', level: 'info', params: { mode: 'AUTO' } }, { seq: 1517, code: 'servo_overheat', level: 'warning' }],
+    inspections: [{ seq: 1532, id: 812, result: 'OK', at: '2026-10-12T14:32:04+09:00' }],
+    minutes: [{ t: '2026-10-12T14:31:00+09:00', good: 18, defect: 2 }, { time: '2026-10-12T14:32:00+09:00', ok: 3, ng: 1 }],
+  });
+  assert.equal(h.runId, '20261012');
+  assert.equal(h.now, '2026-10-12T05:32:05.000Z');
+  assert.equal(h.lastSeq, 1532);
+  assert.deepEqual(h.events.map((e) => e.seq), [1517, 1520]);
+  assert.equal(h.events[1].code, 'mode_changed');
+  assert.equal(h.events[1].params.mode, 'auto');
+  assert.equal(h.inspections[0].result, 'good');
+  assert.deepEqual(h.minutes, [
+    { t: '2026-10-12T05:31:00.000Z', good: 18, defect: 2 },
+    { t: '2026-10-12T05:32:00.000Z', good: 3, defect: 1 },
+  ]);
+  const old = a.history({ logs: [{ code: 'x' }] });
+  assert.equal(old.events.length, 1);
+  assert.equal(old.minutes, null); // 분당 집계가 없으면 null (화면이 판정으로 센다)
 });

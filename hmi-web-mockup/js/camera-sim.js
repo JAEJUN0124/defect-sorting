@@ -20,8 +20,9 @@
   const H = 720;
   const GAP = 320; // 부품 사이 거리
   const SIZE = 96; // 부품 한 변
-  const SECONDS_PER_PART = 1.6; // 가짜 서버의 판정 주기와 맞춘다
+  const SECONDS_PER_PART = 1.6; // 가짜 컨베이어(js/conveyor.js 기본값: 50%로 80mm 간격)와 같은 빠르기
   const LINE_X = W * 0.5; // 검사선
+  const STOP_RANGE = GAP * 0.6; // 멈추라는 단계가 오면 검사선 앞 이만큼 안의 부품은 선까지 데려와 세운다
 
   class CameraSim {
     constructor(labels) {
@@ -30,6 +31,7 @@
       for (let x = W * 0.12; x < W + GAP; x += GAP) this.items.push(makePart(x));
       this.views = new Set();
       this.belt = false;
+      this.stage = null;
       this.offset = 0;
       this.frame = this.frame.bind(this);
       matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { this.readTheme(); this.draw(); });
@@ -70,7 +72,15 @@
       this.drawView(view);
     }
 
-    setBelt(running) { this.belt = running; }
+    // 컨베이어 움직임. 가동 중이 아니면 멈춘다. 서버가 공정 단계(상태 cycle.stage)를 알려 주면 그대로 따른다:
+    //   feeding·passing은 돌고, inspecting·sorting은 다가오던 부품을 검사선에 세운 뒤 멈추며, sorting에서는 로봇팔이 불량품을 집어 간다.
+    // 단계를 모르면(v0.2 서버) 계속 돌고, 불량품은 검사선을 지나 사라진다
+    setLine(running, stage) {
+      this.belt = !!running;
+      this.stage = running ? stage || null : null;
+    }
+
+    setBelt(running) { this.setLine(running, null); }
 
     // 판정 결과가 오면 검사선에 가장 가까운, 아직 판정 안 된 부품에 붙인다
     mark(result) {
@@ -94,12 +104,21 @@
     }
 
     advance(dt) {
-      const dx = (GAP / SECONDS_PER_PART) * dt;
+      let dx = (GAP / SECONDS_PER_PART) * dt;
+      if (this.stage === 'inspecting' || this.stage === 'sorting') {
+        // 검사선에 가장 가까이 다가온 부품이 선에 닿을 때까지만 움직인다
+        const next = this.items
+          .filter((it) => it.x <= LINE_X && LINE_X - it.x <= STOP_RANGE)
+          .reduce((a, it) => (!a || it.x > a.x ? it : a), null);
+        dx = next ? Math.min(dx, LINE_X - next.x) : 0;
+      }
       this.offset = (this.offset + dx) % 32;
       this.items.forEach((it) => {
         it.x += dx;
-        // 불량품은 검사선을 지나면 로봇팔이 집어 간 것처럼 사라진다
-        if (it.result === 'defect' && it.x > W * 0.68) it.alpha = Math.max(0, it.alpha - dt * 2.5);
+        // 단계를 알면 검사선에 선 불량품을 로봇팔이 집어 가고, 모르면 검사선을 지난 뒤 사라진다
+        if (it.result !== 'defect') return;
+        if (this.stage === 'sorting' && Math.abs(it.x - LINE_X) < SIZE / 2) it.alpha = Math.max(0, it.alpha - dt * 0.8);
+        else if (!this.stage && it.x > W * 0.68) it.alpha = Math.max(0, it.alpha - dt * 2.5);
       });
       this.items = this.items.filter((it) => it.x < W + SIZE && it.alpha > 0);
       const leftmost = this.items.reduce((min, it) => Math.min(min, it.x), Infinity);

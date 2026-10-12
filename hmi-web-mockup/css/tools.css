@@ -44,6 +44,8 @@
   font-size: var(--fs-m);
 }
 .field--wide input { min-width: min(520px, 80vw); }
+.check { display: inline-flex; align-items: center; gap: var(--s-2); min-height: 44px; font-size: var(--fs-s); color: var(--c-ink); }
+.check input { width: 20px; height: 20px; margin: 0; accent-color: var(--c-ink); }
 
 .btn {
   width: auto;

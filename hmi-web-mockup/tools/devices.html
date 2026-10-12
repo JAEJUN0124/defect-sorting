@@ -15,7 +15,7 @@
     <header class="tool__head">
       <div>
         <h1 class="tool__title">장치 점검</h1>
-        <p class="tool__lead">로봇팔 서보, USB 카메라, 아두이노를 이 PC에서 직접 확인합니다. 설치·고장 확인용이며 운영 화면이 아닙니다.
+        <p class="tool__lead">로봇팔 서보, USB 카메라, 아두이노 컨베이어를 이 PC에서 직접 확인합니다. 설치·고장 확인용이며 운영 화면이 아닙니다.
           Chrome 또는 Edge에서 <code>http://localhost</code>로 열어야 USB 포트를 쓸 수 있습니다.</p>
       </div>
       <a class="key key--quiet btn" href="../index.html">조작 화면</a>
@@ -59,6 +59,56 @@
         <p class="hint">로봇팔을 원점 자세로 둔 채 누르면 config/home-position.js에 넣을 내용을 만듭니다 (LeRobot과 같은 식으로 각도를 셈).</p>
       </div>
       <pre class="out" id="servo-home-out" hidden></pre>
+
+      <h2>자세 저장 (로봇팔 작업용)</h2>
+      <p class="hint">불량품을 집어 상자에 넣는 작업의 자세 값을 모읍니다 (docs/arm-control.md 3장). 로봇팔을 손으로 그 자세에 두고 이름을 고른 뒤 누르세요.
+        모은 값은 이 브라우저에 남고, 서버 쪽 로봇팔 설정 파일의 poses에 붙여 넣습니다. 그리퍼 값은 기록만 하고 작업에서는 gripper 단계로 움직입니다.</p>
+      <div class="row">
+        <label class="field">자세 이름
+          <input id="pose-name" list="pose-names" value="wait" autocomplete="off" spellcheck="false">
+          <datalist id="pose-names">
+            <option value="wait">대기 (카메라를 가리지 않는 곳)</option>
+            <option value="above_pick">집는 자리 위</option>
+            <option value="pick">집는 자리</option>
+            <option value="above_bin">불량 상자 위</option>
+            <option value="rest">접은 자세 (종료할 때)</option>
+          </datalist>
+        </label>
+        <button type="button" class="key btn" id="pose-save" disabled>지금 자세 저장</button>
+        <button type="button" class="key key--quiet btn" id="pose-clear">모은 자세 지우기</button>
+      </div>
+      <pre class="out" id="pose-out"></pre>
+    </section>
+
+    <!-- 3. 컨베이어 (아두이노 규약 점검) -->
+    <section class="panel-sec" aria-labelledby="cv-title">
+      <h2 id="cv-title">컨베이어 (아두이노 규약 점검)</h2>
+      <p class="hint">아두이노 스케치가 컨베이어 시리얼 규약(docs/conveyor-protocol.md)대로 답하는지 봅니다. 115200bps, 줄 끝 \n.
+        우노·나노는 포트를 열면 리셋되어 2초쯤 뒤에 답합니다. 서버나 아래 시리얼 콘솔이 같은 포트를 쓰고 있으면 열리지 않습니다.
+        연결해 있는 동안 이 화면이 PING을 보내 아두이노의 감시 타이머를 살려 둡니다.</p>
+      <div class="row">
+        <button type="button" class="key btn" id="cv-connect">USB 포트 고르기</button>
+        <button type="button" class="key key--quiet btn" id="cv-fake">가짜 컨베이어로 시험</button>
+        <button type="button" class="key key--quiet btn" id="cv-close" disabled>연결 끊기</button>
+      </div>
+      <p class="hint" id="cv-port" aria-live="polite"></p>
+      <pre class="out" id="cv-state">연결하지 않았습니다.</pre>
+      <div class="row" role="group" aria-label="컨베이어 명령">
+        <button type="button" class="key btn" data-cv="run" disabled>가동 (RUN)</button>
+        <button type="button" class="key btn" data-cv="stop" disabled>정지 (STOP)</button>
+        <button type="button" class="key btn" data-cv="halt" disabled>바로 멈추고 잠금 (HALT)</button>
+        <button type="button" class="key key--quiet btn" data-cv="reset" disabled>잠금 풀기 (RESET)</button>
+        <label class="field">속도(%) <input id="cv-speed" type="number" min="0" max="100" step="1" value="50"></label>
+        <button type="button" class="key key--quiet btn" data-cv="speed" disabled>속도 바꾸기</button>
+        <button type="button" class="key key--quiet btn view__toggle" data-cv="autostop" aria-pressed="false" disabled>센서로 스스로 멈추기</button>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="cv-motion"> 벨트가 움직여도 됩니다 (가동·잠금·감시 타이머 시험)</label>
+        <button type="button" class="key btn" id="cv-check" disabled>규약 점검</button>
+      </div>
+      <ul class="checks" id="cv-checks" aria-live="polite"></ul>
+      <p class="hint">주고받은 줄 (→ 보냄, ← 받음. 살아 있음 신호 PING은 빼고 보입니다)</p>
+      <pre class="out" id="cv-log" aria-label="주고받은 줄"></pre>
     </section>
 
     <!-- 2. 카메라 -->
@@ -106,7 +156,7 @@
       <p class="hint" id="stream-state" aria-live="polite"></p>
     </section>
 
-    <!-- 3. 시리얼 콘솔 -->
+    <!-- 4. 시리얼 콘솔 -->
     <section class="panel-sec" aria-labelledby="ser-title">
       <h2 id="ser-title">시리얼 콘솔 (아두이노 컨베이어 등)</h2>
       <p class="hint">아두이노 스케치가 주고받는 글자를 직접 봅니다. 보낸 글자에 따라 컨베이어가 움직일 수 있으니 주변을 확인하고 보내세요.
@@ -144,6 +194,7 @@
   <script>window.HmiApi = { adapter: window.HmiAdapter.create() }; // camera.js가 웹소켓 JPEG 메시지를 읽을 때 쓴다</script>
   <script src="../js/camera.js"></script>
   <script src="../js/feetech.js"></script>
+  <script src="../js/conveyor.js"></script>
   <script src="devices.js"></script>
 </body>
 </html>
