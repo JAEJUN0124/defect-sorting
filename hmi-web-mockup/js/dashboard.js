@@ -148,7 +148,7 @@
     }
     else if (fault) { detail = store.faultDetail(st.fault); error = true; }
     else if (p === 'running') detail = t('db.detail.running', { mode: modeWord(), duration: duration() });
-    else if (p === 'stopped' && st.homeRequired) detail = t('detail.homeRequired');
+    else if (p === 'stopped' && store.homeBlock()) detail = t(store.homeBlock() === 'unset' ? 'detail.homeNotSet' : 'detail.homeRequired'); // 자동 시작을 막는 원점 문제
     else if (p === 'stopped') detail = t('db.detail.stopped', { mode: modeWord() });
     else if (p === 'estop') detail = t('db.detail.estop');
     else if (p === 'unknown') detail = t('detail.unknown', { state: st.lineRaw });

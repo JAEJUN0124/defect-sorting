@@ -115,6 +115,11 @@
 
 .controls { display: grid; gap: var(--s-3); }
 
+/* 원점: 복귀(자동 모드) · 잡기(수동 모드) 두 키를 나란히. 바로 아래 운전 모드 선택 스위치와 헷갈리지 않게 아이콘을 붙이고,
+   가끔 쓰는 조작이라 글자는 한 단계 작게 — 조작반이 가장 좁을 때(360px)도 아이콘과 글자가 한 줄에 들어간다 */
+.homekeys { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
+.homekeys .key { justify-content: center; gap: var(--s-2); padding: 0 var(--s-3); font-size: var(--fs-m); }
+
 /* 운전 모드: 두 자리 선택 스위치 */
 .mode { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
 .mode__legend { font-size: var(--fs-s); color: var(--c-ink-2); }

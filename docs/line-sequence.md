@@ -56,7 +56,7 @@
 `clear`는 고장이 풀리는 방법입니다.
 
 - `auto`: 원인이 사라지면 서버가 지웁니다 (서보가 식으면 등). 그동안 시작은 `409 FAULT_ACTIVE`.
-- `home`: 원점 잡기를 마치면 지웁니다. 그동안 시작은 `409 HOME_REQUIRED`.
+- `home`: 원점 복귀를 마치거나 수동 모드에서 원점 잡기를 하면 지웁니다. 그동안 자동 시작은 `409 HOME_REQUIRED` (수동 시작은 막지 않음).
 - `start`: 사람이 확인하고 시작을 누르면 지웁니다 (시작이 곧 확인). 서버는 시작할 때 컨베이어에 `RESET`을 보냅니다.
 
 ## 4. 자동 모드 — 계속 돌다 불량만 멈춤 (다른 안)
@@ -82,11 +82,12 @@
 | 정지 | `STOP` | 작업 중이면 끝까지 → 대기 자세 | `stopping` → `stopped` |
 | 긴급정지 (F-02) | `HALT` (가장 먼저) | `relax()` | `estop: true`, `home_required: true` |
 | 긴급정지 해제 | `RESET` | 지금 자세로 힘을 다시 줌 | `estop: false`, 정지 그대로 (D-004) |
-| 원점 잡기 (F-04) | 그대로 (멈춤) | `move_home()` | `homing` → `stopped`, `home_required: false`, `clear: home` 고장을 지움 |
+| 원점 복귀 (F-04, 자동 모드·정지 상태) | 그대로 (멈춤) | `move_home()` — 저장된 원점으로 | `homing` → `stopped`, `home_required: false`, `clear: home` 고장을 지움 |
+| 원점 잡기 (F-04, 수동 모드) | 그대로 | `set_home()` — 지금 자세를 원점으로 저장 | `home` 바뀜, `home_required: false`, `clear: home` 고장을 지움. 라인 상태는 그대로(가동 중에도 받음) |
 | 운전 모드 전환 (F-06) | 그대로 | 수동이면 `teleop` 준비 | 정지 상태에서만 (D-003) |
 | 프로그램 종료 (F-03) | `STOP` | `park` 작업 → 힘 빼기 | `shutdown_complete` |
 
-시작을 거절하는 순서: 긴급정지(`ESTOP_ACTIVE`) → 상태(`INVALID_STATE`) → `clear: auto` 고장(`FAULT_ACTIVE`) → 원점 필요(`HOME_REQUIRED`) → 장치 연결(`DEVICES_NOT_READY`).
+시작을 거절하는 순서: 긴급정지(`ESTOP_ACTIVE`) → 상태(`INVALID_STATE`) → `clear: auto` 고장(`FAULT_ACTIVE`) → 자동 모드면 저장된 원점 없음(`HOME_NOT_SET`)·원점 필요(`HOME_REQUIRED`) → 장치 연결(`DEVICES_NOT_READY`).
 
 ## 7. 서버 설정값 (초안)
 

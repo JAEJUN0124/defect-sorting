@@ -1,9 +1,10 @@
-// 대시보드 조작 — 조작 화면(js/app.js)과 같은 규칙으로 시작/정지·긴급정지 해제·원점 잡기·운전 모드·카메라·프로그램 종료를 서버에 보냅니다.
+// 대시보드 조작 — 조작 화면(js/app.js)과 같은 규칙으로 시작/정지·긴급정지 해제·원점 복귀·원점 잡기·운전 모드·카메라·프로그램 종료를 서버에 보냅니다.
 // 긴급정지 단추 자체는 화면마다 그리는 곳(dashboard.js · dashboard-tabs.js)이 맡습니다.
 // 단추 자리는 화면마다 달라 data-ctl 속성으로 찾습니다 (한 기능의 단추가 여러 자리에 있어도 된다):
 //   data-ctl="run"         시작/정지 (가동 중이면 정지). data-slot="banner"면 긴급정지 중에는 숨고 그 자리를 해제 단추가 쓴다
 //   data-ctl="release"     긴급정지 해제 (확인 창). 긴급정지 중에만 보인다
-//   data-ctl="home"        원점 잡기 (config/home-position.js 각도)
+//   data-ctl="home"        원점 복귀 — 서버가 저장한 원점으로 옮긴다 (자동 모드·정지 상태)
+//   data-ctl="set-home"    원점 잡기 — 로봇팔의 지금 자세를 원점으로 저장한다 (수동 모드, 확인 창)
 //   data-ctl="mode"        운전 모드. data-mode="auto" | "manual"
 //   data-ctl="camera-on" · "camera-off"  카메라 켜기/끄기. data-camera로 id를 주면 그 카메라만, 없으면 모든 카메라
 //   data-ctl="exit"        프로그램 종료 (확인 창 → 종료 화면)
@@ -11,8 +12,6 @@
 //                          data-note-short가 있으면 늘 붙는 안내는 짧은 문장으로 (좁은 자리)
 // 확인 창(#dlg)과 종료 화면(#ended)은 화면 HTML에 둔다 — 조작 화면과 같은 구조.
 (function () {
-  const cfg = window.HMI_CONFIG;
-  const home = window.HMI_HOME_POSITION || { joints: [], unit: 'deg', provisional: false };
   const api = window.HmiApi;
   const store = window.HmiStore;
   const { t } = window.I18N;
@@ -46,10 +45,13 @@
   function noteFor(key, p, short) {
     if (ui.notes[key]) return ui.notes[key];
     if ((key === 'home' || key === 'mode') && p === 'running') return { text: t(short ? 'ctl.locked.short' : 'run.locked') };
-    // 긴급정지·로봇팔 고장 뒤에는 원점을 다시 잡아야 시작할 수 있다 (docs/API.md 4.1 HOME_REQUIRED)
-    if (key === 'run' && p === 'stopped' && S() && S().homeRequired) return { text: t(short ? 'ctl.homeFirst.short' : 'run.homeFirst') };
-    if (key === 'home' && p === 'stopped' && S() && S().homeRequired) return { text: t(short ? 'ctl.homeNeeded.short' : 'home.needed') };
-    if (key === 'home' && cfg.devMode && home.provisional && p === 'stopped') return { text: t(short ? 'ctl.provisional.short' : 'home.provisional') };
+    // 자동 모드에서는 저장된 원점이 있어야 하고, 긴급정지·로봇팔 고장 뒤에는 원점 복귀를 해야 시작할 수 있다 (docs/API.md 4.1)
+    const block = p === 'stopped' ? store.homeBlock() : null;
+    const unset = block === 'unset';
+    if (key === 'run' && block) return { text: t(short ? (unset ? 'ctl.homeNotSet.short' : 'ctl.homeFirst.short') : (unset ? 'run.homeNotSet' : 'run.homeFirst')) };
+    if (key === 'home' && block) return { text: t(short ? (unset ? 'ctl.homeNotSet.short' : 'ctl.homeNeeded.short') : (unset ? 'home.notSet' : 'home.needed')) };
+    // 수동 모드: 원점 잡기 쓰는 법과 마지막으로 저장한 때 (좁은 자리에는 쓰지 않는다)
+    if (key === 'set-home' && !short && (p === 'stopped' || p === 'running') && S() && S().mode === 'manual') return { text: store.homeSetHint() };
     return null;
   }
 
@@ -77,8 +79,18 @@
       if (icon) icon.setAttribute('href', running ? '#i-stop' : '#i-play');
     });
     all('[data-ctl="release"]').forEach((b) => { b.hidden = !latched; b.disabled = ui.busy.has('release'); });
-    // 원점·운전 모드 — 정지 상태에서만
-    all('[data-ctl="home"]').forEach((b) => { b.disabled = !stopped || ui.busy.has('home'); });
+    // 원점 — 복귀는 자동 모드·정지 상태(저장된 원점이 있을 때), 잡기는 수동 모드(정지·가동 중). 긴급정지 중에는 둘 다 잠긴다.
+    // 모드 때문에 못 누르는 키는 마우스를 올리면 이유가 보인다
+    const manual = !!st && st.mode === 'manual';
+    all('[data-ctl="home"]').forEach((b) => {
+      b.disabled = !stopped || manual || st.home === null || ui.busy.has('home');
+      b.title = manual ? t('home.go.autoOnly') : '';
+    });
+    all('[data-ctl="set-home"]').forEach((b) => {
+      b.disabled = !(stopped || running) || !manual || ui.busy.has('set-home');
+      b.title = st && !manual ? t('home.set.manualOnly') : '';
+    });
+    // 운전 모드 — 정지 상태에서만
     all('[data-ctl="mode"]').forEach((b) => {
       b.setAttribute('aria-pressed', String(!!st && st.mode === b.dataset.mode));
       b.disabled = !stopped || ui.busy.has('mode');
@@ -209,8 +221,11 @@
       const estop = $('btn-estop');
       if (estop) estop.focus();
     } else if (kind === 'home') {
-      const angles = Object.fromEntries(home.joints.map((j) => [j.id, j.angle]));
-      act('home', () => api.home(angles, home.unit));
+      act('home', () => api.home());
+    } else if (kind === 'set-home') {
+      // 저장된 원점을 덮어쓴다 — 확인 창을 거친다
+      if (!(await confirmDialog('setHome'))) return;
+      act('set-home', () => api.setHome());
     } else if (kind === 'mode') {
       if (!S() || S().mode === b.dataset.mode) return;
       act('mode', () => api.setMode(b.dataset.mode));

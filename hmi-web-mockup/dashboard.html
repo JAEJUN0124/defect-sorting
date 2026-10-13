@@ -56,11 +56,16 @@
           </button>
         </div>
         <div class="ops__more">
+          <!-- 원점: 복귀는 자동 모드, 잡기는 수동 모드 (조작 화면과 같은 규칙) -->
           <button type="button" class="key key--quiet ops__key" data-ctl="home">
             <svg class="key__icon" aria-hidden="true"><use href="#i-home"></use></svg>
-            <span data-i18n="home.label">원점 잡기</span>
+            <span data-i18n="home.go">원점 복귀</span>
           </button>
-          <p class="note ops__note" data-note="run release mode home exit" aria-live="polite" hidden></p>
+          <button type="button" class="key key--quiet ops__key" data-ctl="set-home">
+            <svg class="key__icon" aria-hidden="true"><use href="#i-sethome"></use></svg>
+            <span data-i18n="home.set">원점 잡기</span>
+          </button>
+          <p class="note ops__note" data-note="run release mode home set-home exit" aria-live="polite" hidden></p>
           <button type="button" class="key key--quiet ops__key ops__exit" data-ctl="exit">
             <svg class="key__icon" aria-hidden="true"><use href="#i-power"></use></svg>
             <span data-i18n="exit.label">프로그램 종료</span>
@@ -172,13 +177,13 @@
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5" fill="currentColor"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></g></symbol>
+    <symbol id="i-sethome" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></g><circle cx="12" cy="12" r="2.5" fill="currentColor"/></symbol>
     <symbol id="i-power" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3.5v8"/><path d="M6.6 7.2a7.5 7.5 0 1 0 10.8 0"/></g></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
     <symbol id="i-panel" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.5 3.5v17"/><circle cx="15" cy="9" r="2"/><path d="M13 15.5h4"/></g></symbol>
   </svg>
 
   <!-- 조작 화면과 같은 순서로 읽는다. 모듈 없이 파일을 더블클릭해도 열리도록 일반 스크립트를 쓴다 -->
-  <script src="config/home-position.js"></script>
   <script src="config/robot.js"></script>
   <script src="js/i18n/ko.js"></script>
   <script src="js/i18n.js"></script>

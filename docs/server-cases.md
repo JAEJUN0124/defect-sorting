@@ -76,7 +76,7 @@ Socket.IO의 Engine.IO 3(python-socketio 4.x 이하)은 지원하지 않습니�
 
 | 서버가 이렇게 하면 | HMI 동작 | 할 일 |
 |---|---|---|
-| REST 경로·방식이 다름 (`POST /run`, `POST /mode/set`) | — | **설정** `server.paths: { start: '/run', mode: 'POST /mode/set' }` (이름: `info status start stop estop release home mode cameraStart cameraStop shutdown`) |
+| REST 경로·방식이 다름 (`POST /run`, `POST /mode/set`) | — | **설정** `server.paths: { start: '/run', mode: 'POST /mode/set' }` (이름: `info status start stop estop release home setHome mode cameraStart cameraStop shutdown`) |
 | 명령을 웹소켓으로만 받음 | `{type:'command', data:{id, name, body}}`를 보내고 `command_result`를 기다림 | **설정** `server.commands: 'ws'`, 이름이 다르면 `server.commandNames` |
 | 명령을 Socket.IO 이벤트로 받음 | 이벤트 이름 = 명령 이름, 응답(ack)을 결과로 씀 | **설정** `push: 'socketio'` + `commands: 'ws'` |
 | 운전 모드 값이 `AUTO`/`MANUAL` 등 | 받을 때는 자동. 보낼 때 다르면 422가 나고 화면에 "요청 형식을 받지 않았습니다" | **설정** `server.modeValues: { auto: 'AUTO', manual: 'MANUAL' }` (서버 점검이 대문자를 보면 이 줄을 만들어 줌) |
@@ -180,7 +180,7 @@ Socket.IO의 Engine.IO 3(python-socketio 4.x 이하)은 지원하지 않습니�
 |---|---|---|
 | LeRobot 그대로 `{"shoulder_pan.pos": 12.3, ...}` | 자동 | — |
 | 단위 도 (LeRobot `use_degrees=True`, 기본) | 관절 °, 그리퍼 % | — |
-| 단위 정규화 (`use_degrees=False`, -100~100) | `unit`을 보내면 자동, 아니면 | **설정** `config/robot.js jointUnit: 'norm'` + 원점 값도 `home-position.js unit: 'norm'` |
+| 단위 정규화 (`use_degrees=False`, -100~100) | `unit`을 보내면 자동, 아니면 | **설정** `config/robot.js jointUnit: 'norm'` (원점은 서버가 저장하고 상태 `home.unit`으로 단위를 함께 보냄) |
 | 라디안 | 도로 바꿈 (`unit: 'rad'` 또는 설정) | **설정** `jointUnit: 'rad'` |
 | 서보 원시값 0~4095 | 도로 바꿈 (서버 정보의 캘리브레이션 최소·최대가 있으면 LeRobot과 같게) | **설정** `jointUnit: 'raw'` |
 | 관절을 배열 `[6개]`, `joint1~6`, `j1`, `base`·`elbow` | 자동 (1~6번 순서) | — |
@@ -244,3 +244,6 @@ python hmi-web-mockup/tests/variant-server.py 8765
 | 원점 필요를 다른 이름으로 (`needs_home` 등) | 자동 | — |
 | `fault.clear`가 없음 | `auto`로 봄 ("원인을 없앤 뒤 시작하세요") | 원점·확인으로 풀리는 고장이면 **요청**: `clear` |
 | `clear` 값이 다름 (`ack`·`confirm`·`homing`) | 자동 (`ack`·`confirm` → `start`, `homing` → `home`) | — |
+| (v0.4) 저장된 원점 `home`이 없음 | 원점이 있는지 모르는 것으로 보고 원점 복귀 키를 막지 않음. 서버가 `409 HOME_NOT_SET`으로 거절하면 그때 이유를 보임. 대시보드 탭 시안의 원점 표는 비어 보임 | **요청**: `home` |
+| (v0.4) 원점을 다른 이름으로 (`origin`·`home_pose`, 각도를 `positions`·LeRobot `.pos`·배열로) | 자동 (관절 단위도 `joints`와 같게 바꿈) | — |
+| (v0.4) 원점 잡기 경로가 다름 (`POST /robot/origin` 등) | — | **설정** `server.paths: { setHome: 'POST /robot/origin' }` |

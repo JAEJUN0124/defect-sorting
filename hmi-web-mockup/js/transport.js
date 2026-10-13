@@ -15,6 +15,7 @@
     estop: ['POST', '/estop'],
     release: ['POST', '/estop/release'],
     home: ['POST', '/robot/home'],
+    setHome: ['POST', '/robot/home/set'],
     mode: ['PUT', '/mode'],
     cameraStart: ['POST', '/camera/start'],
     cameraStop: ['POST', '/camera/stop'],

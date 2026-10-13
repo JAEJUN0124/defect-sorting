@@ -1,4 +1,4 @@
-# HMI ↔ 서버 API 초안 (v0.3)
+# HMI ↔ 서버 API 초안 (v0.4)
 
 HMI가 서버에 기대하는 동작을 정리한 초안입니다. 서버 담당과 맞춰 가며 고칩니다.
 HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대로 동작하므로, 실제 서버를 만들 때 동작 견본으로 쓸 수 있습니다.
@@ -10,7 +10,8 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 서버가 장치와 주고받는 약속은 따로 있습니다: [컨베이어 시리얼 규약](conveyor-protocol.md) · [로봇팔 제어 약속](arm-control.md) · [공정 순서](line-sequence.md).
 이 문서는 그 결과 중 HMI가 보는 것(상태·고장·이벤트)만 다룹니다.
 
-달라진 점은 [10장](#10-v01--v02-바뀐-점)(v0.1 → v0.2)과 [11장](#11-v02--v03-바뀐-점)(v0.2 → v0.3)에 모았습니다. 모두 더하기만 해서 v0.1·v0.2대로 만든 서버도 그대로 동작합니다.
+달라진 점은 [10장](#10-v01--v02-바뀐-점)(v0.1 → v0.2), [11장](#11-v02--v03-바뀐-점)(v0.2 → v0.3), [12장](#12-v03--v04-바뀐-점)(v0.3 → v0.4)에 모았습니다.
+v0.2·v0.3은 더하기만 했고, **v0.4는 원점(F-04)의 뜻이 바뀌었습니다**: 원점은 서버가 저장하고, 수동 모드의 "원점 잡기"가 로봇팔의 지금 자세를 원점으로 저장하며, 자동 모드의 "원점 복귀"가 그 원점으로 옮깁니다 (4.2장).
 
 ## 1. 기본 규칙
 
@@ -31,7 +32,7 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 
 ```json
 {
-  "api": "0.3",
+  "api": "0.4",
   "server": { "name": "defect-sorting-server", "version": "0.1.0" },
   "joint_unit": "deg",
   "cameras": [
@@ -42,7 +43,7 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
     "arm":    { "role": "follower", "calibration": { "shoulder_pan": { "min": 1012, "max": 3086 } } },
     "leader": { "role": "leader" }
   },
-  "features": ["telemetry", "metrics", "inspection_bbox", "multi_camera", "history", "cycle"]
+  "features": ["telemetry", "metrics", "inspection_bbox", "multi_camera", "history", "cycle", "home"]
 }
 ```
 
@@ -64,6 +65,12 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
   "mode": "auto",
   "fault": null,
   "started_at": "2026-10-12T14:02:11+09:00",
+  "home": {
+    "angles": { "shoulder_pan": 16.8, "shoulder_lift": -73.9, "elbow_flex": 21.3,
+                "wrist_flex": 70.6, "wrist_roll": -58.1, "gripper": 50.7 },
+    "unit": "deg",
+    "set_at": "2026-10-13T21:14:19+09:00"
+  },
   "home_required": false,
   "cycle": { "stage": "inspecting", "part": 128, "step": null },
   "devices": {
@@ -85,7 +92,8 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 | `mode` | `auto` / `manual` | 자동 = 카메라 판정으로 로봇팔이 선별, 수동 = 리더암으로 사람이 조작 |
 | `fault` | `null` 또는 `{ "code": "SERVO_OVERHEAT", "params": { "arm": "arm", "joint": "elbow_flex", "temp": 65.2 }, "clear": "auto" }` | (v0.2) 고장으로 멈췄을 때 이유. 정지 상태 설명과 시작 거절 문구에 쓰입니다. `clear`(v0.3)는 풀리는 방법 (3.1장) |
 | `started_at` | 시각 또는 `null` | (v0.2) 이번 가동을 시작한 때. 대시보드의 가동 시간 |
-| `home_required` | `true` / `false` | (v0.3) 원점 잡기를 해야 시작할 수 있음. 긴급정지·로봇팔 고장 뒤 `true`, 원점 잡기를 마치면 `false`. 그동안 시작은 `409 HOME_REQUIRED` |
+| `home` | `{ "angles", "unit", "set_at" }` 또는 `null` | (v0.4) 서버가 저장한 원점. `angles`는 관절 6개(4.2장 이름), `unit`은 그 단위, `set_at`은 원점 잡기로 저장한 때(모르면 `null`). 아직 저장한 원점이 없으면 `null` — 그동안 원점 복귀와 자동 시작은 `409 HOME_NOT_SET`. 이 필드를 보내지 않으면 HMI는 원점이 있는지 모르는 것으로 보고 키를 막지 않습니다 |
+| `home_required` | `true` / `false` | (v0.3) 원점 복귀를 해야 **자동으로** 시작할 수 있음. 긴급정지·로봇팔 고장 뒤 `true`, 원점 복귀를 마치거나 수동 모드에서 원점 잡기를 하면 `false`. 그동안 자동 시작은 `409 HOME_REQUIRED` (v0.4: 수동 시작은 막지 않음) |
 | `cycle` | `null` 또는 `{ "stage", "part", "step" }` | (v0.3) 가동 중 부품 하나를 처리하는 단계. `stage`: `feeding`(옮기는 중) · `inspecting`(멈춰서 판정) · `sorting`(로봇팔이 불량품을 옮김) · `passing`(양품을 내보냄). `part`는 그 부품의 판정 번호, `step`은 로봇팔 작업의 지금 단계 이름(선택). [공정 순서](line-sequence.md) |
 | `devices.*` | `connected` / `disconnected` | 컨베이어(아두이노), 로봇팔(팔로워), 리더암, 카메라마다 `camera_<id>` |
 | `stats` | 정수 | 이번 실행에서 검사한 수 / 양품 / 불량 |
@@ -110,19 +118,20 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 | clear | 풀리는 때 | 그동안 시작 | 화면 안내 |
 |---|---|---|---|
 | `auto` | 원인이 사라지면 서버가 지움 (서보가 식으면 등) | `409 FAULT_ACTIVE` | "원인을 없앤 뒤 시작하세요" |
-| `home` | 원점 잡기를 마치면 서버가 지움 | `409 HOME_REQUIRED` | "원점 잡기를 한 뒤 시작하세요" |
+| `home` | 원점 복귀를 마치면(또는 수동 모드에서 원점 잡기를 하면) 서버가 지움 | 자동 시작은 `409 HOME_REQUIRED` | "원점 복귀를 한 뒤 시작하세요" |
 | `start` | 사람이 확인하고 시작을 누르면 서버가 지우고 시작 (시작이 곧 확인) | 받음 | "확인한 뒤 시작하세요" |
 
 ## 4. 명령 (HTTP)
 
 | 요구사항 | 메서드 · 경로 | 요청 본문 | 성공 | 대표 실패 |
 |---|---|---|---|---|
-| F-01 시작 | `POST /api/line/start` | 없음 (설정하면 `config.js server.startBody`를 보냄) | `200` 상태 | `409 DEVICES_NOT_READY` `409 ESTOP_ACTIVE` `409 INVALID_STATE` `409 FAULT_ACTIVE` `409 POWER_ABNORMAL` `409 HOME_REQUIRED` |
+| F-01 시작 | `POST /api/line/start` | 없음 (설정하면 `config.js server.startBody`를 보냄) | `200` 상태 | `409 DEVICES_NOT_READY` `409 ESTOP_ACTIVE` `409 INVALID_STATE` `409 FAULT_ACTIVE` `409 POWER_ABNORMAL` `409 HOME_NOT_SET` `409 HOME_REQUIRED` |
 | 정지 (일반) | `POST /api/line/stop` | 없음 | `200` 상태 | `409 INVALID_STATE` |
 | F-02 긴급정지 | `POST /api/estop` | 없음 | `200` 상태 (항상 허용, 여러 번 보내도 같음) | — |
 | F-02 해제 | `POST /api/estop/release` | 없음 | `200` 상태. 라인은 `stopped` 유지 | `409 ESTOP_NOT_ACTIVE` |
 | F-03 종료 | `POST /api/system/shutdown` | 없음 | `202`. 정리가 끝나면 실시간 `shutdown_complete` | — |
-| F-04 원점 잡기 | `POST /api/robot/home` | `{ "angles": { 관절: 값 }, "unit": "deg" }` | `202`. 끝나면 실시간 `home_complete` | `409 NOT_STOPPED` `409 ESTOP_ACTIVE` `422 INVALID_ANGLES` |
+| F-04 원점 복귀 | `POST /api/robot/home` | 없음 (v0.4: 서버가 저장한 원점으로) | `202`. 끝나면 실시간 `home_complete` | `409 NOT_AUTO` `409 NOT_STOPPED` `409 ESTOP_ACTIVE` `409 HOME_NOT_SET` `409 DEVICES_NOT_READY` |
+| F-04 원점 잡기 | `POST /api/robot/home/set` | 없음 (v0.4: 로봇팔의 지금 자세를 저장) | `200 { "home": { "angles", "unit", "set_at" } }` | `409 NOT_MANUAL` `409 ESTOP_ACTIVE` `409 INVALID_STATE` `409 DEVICES_NOT_READY` |
 | F-05 카메라 켜기 | `POST /api/camera/start` | 없음(모든 카메라) 또는 `{ "camera": "top" }` | `200 { "url": "...", "cameras": { ... } }` | `409 DEVICES_NOT_READY` `404 CAMERA_NOT_FOUND` |
 | F-05 카메라 끄기 | `POST /api/camera/stop` | 없음 또는 `{ "camera": "top" }` | `200` | — |
 | F-05 영상 | `GET /api/camera/<id>/stream` | — | [7장](#7-카메라-영상-방식)의 방식 중 하나 (MJPEG 권장) | — |
@@ -139,7 +148,8 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 1. 긴급정지 중 → `409 ESTOP_ACTIVE`
 2. 정지 상태가 아님 → `409 INVALID_STATE`
 3. `clear`가 `auto`인 고장 → `409 FAULT_ACTIVE`, `details`는 `{ "fault": "SERVO_OVERHEAT", "params": { ... } }` (`clear: start` 고장은 여기서 지우고 계속)
-4. 원점 잡기가 필요함(`home_required`) → `409 HOME_REQUIRED`
+4. 자동 모드에서만 (v0.4): 저장된 원점이 없음(`home: null`) → `409 HOME_NOT_SET`, 원점 복귀가 필요함(`home_required`) → `409 HOME_REQUIRED`.
+   수동 모드는 이 둘을 보지 않습니다 — 사람이 리더암으로 팔을 움직이므로 원점이 필요 없습니다. 수동 모드로 시작하면 `clear: home` 고장도 지웁니다(사람이 팔을 넘겨받음). `home_required`는 남아 자동 시작을 계속 막습니다
 
 그다음 `line`을 `starting`으로 바꾸고 아래 장치 연결을 확인합니다.
 
@@ -154,18 +164,25 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 
 장치가 모두 있으면 컨베이어를 풀고(`RESET`) 가동하며 `cycle.stage`를 `feeding`으로 둡니다 ([공정 순서 6장](line-sequence.md#6-hmi-명령을-받았을-때)).
 
-### 4.2 원점 각도 (F-04)
-원점 각도는 HMI 설정 파일 `hmi-web-mockup/config/home-position.js`에 따로 두고, 요청할 때 함께 보냅니다.
-`unit`은 그 값의 단위입니다(`deg`: 관절은 도·그리퍼는 0~100, `norm`: 관절 -100~100·그리퍼 0~100 — LeRobot 정규화와 같음).
-서버는 관절 한계를 넘는 값이면 `422 INVALID_ANGLES`로 거절해 주세요.
+### 4.2 원점 — 원점 잡기와 원점 복귀 (F-04, v0.4)
+원점은 **서버가 저장**합니다 (서버 쪽 설정 파일 — 서버를 다시 켜도 남게). HMI는 각도를 보내지 않고, 상태의 `home`으로 저장된 원점을 받아 보입니다.
+
+| 기능 | 모드 · 상태 | 서버가 하는 일 |
+|---|---|---|
+| 원점 잡기 `POST /api/robot/home/set` | **수동 모드**. 정지·가동 중(리더암을 따라가는 중) 모두. 긴급정지 중(힘이 빠짐)에는 `409 ESTOP_ACTIVE` | 사람이 리더암으로 로봇팔(팔로워)을 원하는 자세에 둔 뒤 누릅니다. 팔로워의 **지금 6축 각도**를 읽어 원점으로 저장하고, 응답과 상태 `home`으로 알립니다. 이벤트 `home_set`. 팔이 원점에 있으므로 `home_required`를 `false`로, `clear: home` 고장을 지웁니다 |
+| 원점 복귀 `POST /api/robot/home` | **자동 모드**·정지 상태. 저장된 원점이 없으면 `409 HOME_NOT_SET` | 저장된 원점으로 천천히 옮깁니다 (`line: homing` → `stopped`, `home_complete`). 긴급정지·로봇팔 고장 뒤 자동으로 다시 시작하려면 먼저 해야 합니다 (`home_required`) |
+
+- 자동 모드에서 원점 잡기는 `409 NOT_MANUAL`, 수동 모드에서 원점 복귀는 `409 NOT_AUTO` 입니다. HMI도 그 모드에서는 키를 잠급니다.
+- 원점 잡기는 저장된 원점을 덮어쓰므로 HMI가 누르기 전에 확인 창을 띄웁니다 ("지금 자세를 원점으로 저장할까요?").
+- `unit`은 서버의 관절 단위입니다(`deg`: 관절은 도·그리퍼는 0~100, `norm`: 관절 -100~100·그리퍼 0~100 — LeRobot 정규화와 같음).
+
+원점 잡기 응답 (상태의 `home`과 같은 모양)
 
 ```json
-{ "angles": { "shoulder_pan": 0, "shoulder_lift": 0, "elbow_flex": 0,
-              "wrist_flex": 0, "wrist_roll": 0, "gripper": 0 },
-  "unit": "deg" }
+{ "home": { "angles": { "shoulder_pan": 16.8, "shoulder_lift": -73.9, "elbow_flex": 21.3,
+                        "wrist_flex": 70.6, "wrist_roll": -58.1, "gripper": 50.7 },
+            "unit": "deg", "set_at": "2026-10-13T21:14:19+09:00" } }
 ```
-
-실제 원점 값은 서버를 끈 상태에서 [`tools/devices.html`](../hmi-web-mockup/tools/devices.html)의 "지금 자세를 원점값으로"로 읽어 채울 수 있습니다.
 
 관절 이름은 LeRobot SO-100/101 표기를 따르고, 모터 번호(ID)도 이 순서입니다.
 
@@ -191,7 +208,7 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 | `telemetry` | `{ "arm": "arm" \| "leader", "unit": "deg", "motors": { 관절: { "pos", "temp", "volt", "load", "current", "status", "torque", "moving" } } }` | (v0.2) 1~2Hz |
 | `metrics` | `{ "inference_ms", "fps": { 카메라: 값 }, "cpu", "queue" }` | (v0.2) 2초마다 |
 | `frame` | `{ "camera", "mime": "image/jpeg", "data": "<base64>" }` | 영상을 주 연결로 보낼 때만 ([7장](#7-카메라-영상-방식)) |
-| `home_complete` | `{}` | 원점 이동이 끝났을 때 |
+| `home_complete` | `{}` | 원점 복귀가 끝났을 때 |
 | `shutdown_complete` | `{}` | 종료 정리가 끝났을 때 |
 | `heartbeat` | `{ "at" }` | 2초마다. HMI는 heartbeat를 한 번이라도 받은 뒤부터 6초 동안 아무 메시지가 없으면 연결 끊김으로 표시 |
 
@@ -215,7 +232,8 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 | `start_rejected` | warning | `devices` (배열) |
 | `estop_pressed` | alarm | — |
 | `estop_released` | info | — |
-| `home_started` / `home_completed` | info | — |
+| `home_started` / `home_completed` | info | — (원점 복귀) |
+| `home_set` | info | — (v0.4) 원점 잡기로 지금 자세를 원점으로 저장함 |
 | `mode_changed` | info | `mode` |
 | `defect_detected` | warning | `id` |
 | `device_disconnected` | warning | `device` |
@@ -292,7 +310,7 @@ HMI가 하는 일
 | HMI 살아 있음 | `config.js server.clientPingMs > 0`일 때 | `{ "type": "ping", "data": { "at": "..." } }` — 서버가 HMI가 끊겼을 때 라인을 세우려면 이것을 보고 판단 |
 | 카메라 영상 | 카메라가 HMI PC에 꽂혀 있고 `cameras.local.upload`를 정했을 때 | 웹소켓 바이너리, 장면마다 JPEG 한 장 |
 
-명령 이름: `info` `status` `history` `start` `stop` `estop` `release` `home` `mode` `cameraStart` `cameraStop` `shutdown` (`config.js server.commandNames`로 바꿀 수 있음).
+명령 이름: `info` `status` `history` `start` `stop` `estop` `release` `home`(원점 복귀) `setHome`(원점 잡기, v0.4) `mode` `cameraStart` `cameraStop` `shutdown` (`config.js server.commandNames`로 바꿀 수 있음).
 명령을 실시간 연결로 보낼 때 `history`의 값(`after` 등)은 `body`에 담습니다.
 
 ## 7. 카메라 영상 방식
@@ -319,7 +337,7 @@ HMI가 하는 일
 
 서버가 멈췄을 때를 대비한 장치 쪽 약속 (v0.3)
 - 컨베이어: 아두이노가 서버의 신호(`PING`)를 1초 동안 못 받으면 스스로 멈추고 잠급니다 ([컨베이어 규약 6장](conveyor-protocol.md#6-감시-타이머--서버가-멈추면-벨트도-멈춘다)).
-- 로봇팔: 서보가 마지막 목표 자세를 버팁니다. 화면 긴급정지는 로봇팔의 힘을 빼고(팔이 아래로 처짐), 해제한 뒤에는 원점 잡기를 해야 다시 시작합니다 ([로봇팔 제어 6장](arm-control.md#6-멈출-때)).
+- 로봇팔: 서보가 마지막 목표 자세를 버팁니다. 화면 긴급정지는 로봇팔의 힘을 빼고(팔이 아래로 처짐), 해제한 뒤 자동으로 다시 시작하려면 원점 복귀를 해야 합니다 ([로봇팔 제어 6장](arm-control.md#6-멈출-때)). 긴급정지 중에는 원점 잡기도 받지 않습니다(처진 자세가 원점으로 저장되지 않게).
 
 ## 9. 서버 담당과 정할 것
 
@@ -329,7 +347,8 @@ HMI가 하는 일
 - [ ] 서버 정보 `GET /api/info` 제공 여부 (권장)
 - [ ] 시각에 시간대 넣기 (`+09:00` 또는 `Z`)
 - [ ] heartbeat 주기 (2초 제안)
-- [ ] 원점 각도 실제 값과 관절별 허용 범위
+- [ ] (v0.4) 원점을 서버의 어느 설정 파일에 저장할지, 원점 잡기 규칙(수동 모드에서만 · 가동 중에도 받음 · 긴급정지 중 거절)과 원점 복귀 규칙(자동 모드·정지 상태)이 맞는지
+- [ ] (v0.4) 자동 작업이 원점을 어떻게 쓸지(예: 작업을 원점에서 시작·끝낼지), 수동으로 팔을 움직인 뒤 자동으로 바꾸면 원점 복귀를 꼭 거치게 할지 (초안: 긴급정지·로봇팔 고장 뒤에만)
 - [ ] 장치가 가동 중에 끊기면 라인을 자동 정지할지 (초안: 정지), 서보 과열·전압 이상 때 정지할지 (초안: 과열 65°C에서 정지)
 - [ ] 서보 상태(`telemetry`)와 판정 성능(`metrics`)을 보낼지 (대시보드에 씀)
 - [ ] HMI를 서버가 직접 내줄지(같은 주소, CORS 불필요) 아니면 CORS를 열지
@@ -365,3 +384,18 @@ HMI가 하는 일
 | 이벤트 | — | `sort_retry`, `conveyor_halted` |
 | 서버 정보 | — | `api: "0.3"`, `features`에 `history` · `cycle` |
 | 장치 쪽 | — | [컨베이어 시리얼 규약](conveyor-protocol.md), [로봇팔 제어 약속](arm-control.md), [공정 순서](line-sequence.md) 새 문서 |
+
+## 12. v0.3 → v0.4 바뀐 점
+
+**원점(F-04)의 뜻이 바뀌었습니다.** v0.3에서는 HMI 설정 파일의 각도로 옮기는 기능 하나였고, v0.4에서는 원점을 서버가 저장하고 기능이 둘로 나뉩니다 (4.2장).
+
+| 바뀐 점 | v0.3 | v0.4 |
+|---|---|---|
+| 원점 값 | HMI 설정 파일 `config/home-position.js` | 서버가 저장. 상태 `home: { angles, unit, set_at }` 또는 `null` |
+| 원점 잡기 | `POST /api/robot/home` + 각도 = 그 각도로 이동 | `POST /api/robot/home/set` (본문 없음) = 로봇팔의 지금 자세를 원점으로 저장. 수동 모드에서만, 가동 중에도 |
+| 원점 복귀 | (원점 잡기와 같은 명령) | `POST /api/robot/home` (본문 없음) = 저장된 원점으로 이동. 자동 모드·정지 상태에서만 |
+| 원점 필요 | 모든 시작을 막음 | 자동 시작만 막음 (`HOME_REQUIRED`). 원점 잡기를 해도 풀림 |
+| 오류 코드 | `422 INVALID_ANGLES` | 없앰. `409 NOT_AUTO` · `409 NOT_MANUAL` · `409 HOME_NOT_SET` 더함 |
+| 이벤트 | — | `home_set` |
+| 명령 이름 | — | `setHome` |
+| 서버 정보 | `api: "0.3"` | `api: "0.4"`, `features`에 `home` |

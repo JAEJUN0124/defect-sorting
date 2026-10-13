@@ -1,7 +1,8 @@
 // 장치 점검 — 로봇팔 서보(Feetech, Web Serial)·자세 저장 · USB 카메라 · 컨베이어 규약 점검 · 시리얼 콘솔. 설치·고장 확인용 (운영 화면 아님)
 (function () {
   const robot = window.HMI_ROBOT;
-  const home = window.HMI_HOME_POSITION || { unit: 'deg' };
+  // 각도 단위: 서버(LeRobot)와 같게. 'norm'이면 -100~100, 아니면 도 (config/robot.js jointUnit)
+  const UNIT = robot.jointUnit === 'norm' ? 'norm' : 'deg';
   const FT = window.Feetech;
   const CV = window.Conveyor;
   const { t } = window.I18N;
@@ -29,7 +30,7 @@
 
   const sv = {
     arm: $('servo-arm'), connect: $('servo-connect'), fake: $('servo-fake'), live: $('servo-live'), close: $('servo-close'),
-    port: $('servo-port'), checks: $('servo-checks'), table: $('servo-table'), rows: $('servo-rows'), home: $('servo-home'), homeOut: $('servo-home-out'),
+    port: $('servo-port'), checks: $('servo-checks'), table: $('servo-table'), rows: $('servo-rows'),
   };
   const servo = { link: null, bus: null, found: [], info: {}, tel: {}, timer: 0, busy: false };
   const po = { name: $('pose-name'), save: $('pose-save'), clear: $('pose-clear'), out: $('pose-out') };
@@ -37,7 +38,6 @@
   function setServoButtons(on) {
     sv.live.disabled = !on;
     sv.close.disabled = !on;
-    sv.home.disabled = !on;
     po.save.disabled = !on;
     if (!on) { sv.live.setAttribute('aria-pressed', 'false'); clearInterval(servo.timer); }
   }
@@ -51,7 +51,6 @@
 
   async function servoConnect(fake) {
     await servoDisconnect();
-    sv.homeOut.hidden = true;
     try {
       servo.link = fake
         ? FT.fakeLink({ voltage: sv.arm.value === 'leader' ? 7.4 : 12 })
@@ -96,7 +95,7 @@
     const joint = jointOf(id);
     if (!info || !tel) return null;
     if (joint === 'gripper') return { value: FT.toPercent(tel.raw, info.minLimit, info.maxLimit), unit: '%' };
-    if (home.unit === 'norm') {
+    if (UNIT === 'norm') {
       const p = FT.toPercent(tel.raw, info.minLimit, info.maxLimit);
       return p === null ? null : { value: p * 2 - 100, unit: '%' };
     }
@@ -173,22 +172,6 @@
     checks(sv.checks, items);
   }
 
-  function homeSnippet() {
-    const armName = sv.arm.value === 'leader' ? '리더암' : '로봇팔(팔로워)';
-    const lines = JOINTS.map((joint, i) => {
-      const pos = displayPos(i + 1);
-      const v = pos && pos.value !== null ? Math.round(pos.value * 10) / 10 : 0;
-      return `    { id: '${joint}', angle: ${v} },${pos ? '' : ' // 읽지 못함'}`;
-    });
-    return [
-      `// tools/devices.html에서 ${new Date().toLocaleString()}에 ${armName}을 읽은 값`,
-      'window.HMI_HOME_POSITION = {',
-      '  provisional: false,',
-      `  unit: '${home.unit === 'norm' ? 'norm' : 'deg'}',`,
-      '  joints: [',
-    ].concat(lines, ['  ],', '};', '']).join('\n');
-  }
-
   sv.connect.addEventListener('click', () => servoConnect(false));
   sv.fake.addEventListener('click', () => servoConnect(true));
   sv.close.addEventListener('click', async () => { await servoDisconnect(); sv.port.textContent = '연결을 끊었습니다.'; });
@@ -199,26 +182,15 @@
     clearInterval(servo.timer);
     if (on) servo.timer = setInterval(servoRead, 300);
   });
-  sv.home.addEventListener('click', async () => {
-    await servoRead();
-    const text = homeSnippet();
-    sv.homeOut.hidden = false;
-    sv.homeOut.textContent = text;
-    try {
-      await navigator.clipboard.writeText(text);
-      sv.homeOut.textContent = text + '\n// 위 내용을 클립보드에 복사했습니다. config/home-position.js에 붙여 넣으세요.';
-    } catch (e) { /* 복사가 막히면 화면의 글을 직접 복사 */ }
-  });
-
   // ----- 자세 저장 (docs/arm-control.md 3.4장) -----
-  // 원점 값과 같은 계산으로 6축을 읽어 이름별로 모은다. 이 브라우저에 남겨 두어 여러 자세를 차례로 모을 수 있다
+  // LeRobot과 같은 계산으로 6축을 읽어 이름별로 모은다. 이 브라우저에 남겨 두어 여러 자세를 차례로 모을 수 있다
   const POSE_KEY = 'hmi.armPoses';
   const loadPoses = () => { try { return JSON.parse(localStorage.getItem(POSE_KEY) || '{}'); } catch (e) { return {}; } };
 
   function renderPoses() {
     const poses = loadPoses();
     if (!Object.keys(poses).length) { po.out.textContent = '아직 모은 자세가 없습니다.'; return; }
-    po.out.textContent = JSON.stringify({ unit: home.unit === 'norm' ? 'norm' : 'deg', poses }, null, 2)
+    po.out.textContent = JSON.stringify({ unit: UNIT, poses }, null, 2)
       .replace(/\{\n\s+("shoulder_pan"[\s\S]*?)\n\s+\}/g, (m, body) => '{ ' + body.replace(/\n\s+/g, ' ') + ' }'); // 자세 하나를 한 줄로
   }
 

@@ -1,5 +1,5 @@
 // 가짜 서버(js/mock-server.js) 시험 — 실행: node --test "hmi-web-mockup/tests/*.test.js"
-// 실제 서버를 만들 때 동작 견본으로 쓰므로, 문서(docs/API.md v0.3 · docs/line-sequence.md)에 적은 규칙대로 움직이는지 본다.
+// 실제 서버를 만들 때 동작 견본으로 쓰므로, 문서(docs/API.md v0.4 · docs/line-sequence.md)에 적은 규칙대로 움직이는지 본다.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -9,7 +9,6 @@ require('../js/conveyor.js');
 require('../js/mock-server.js');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const HOME = { shoulder_pan: 0, shoulder_lift: 0, elbow_flex: 0, wrist_flex: 0, wrist_roll: 0, gripper: 0 };
 
 // 시험은 빠르게: 벨트를 빨리 돌리고(부품이 0.2초마다), 로봇팔도 빨리 움직이며, 불량은 일부러 낼 때만
 function setup(t, options) {
@@ -41,18 +40,21 @@ async function startLine(server) {
   return r;
 }
 
-test('서버 정보와 상태 모양 (v0.3)', async (t) => {
+test('서버 정보와 상태 모양 (v0.4)', async (t) => {
   const { server } = setup(t);
   const info = await server.request('GET', '/info');
-  assert.equal(info.body.api, '0.3');
+  assert.equal(info.body.api, '0.4');
   assert.deepEqual(info.body.cameras.map((c) => c.id), ['top', 'close']);
-  assert.ok(info.body.features.includes('history') && info.body.features.includes('cycle'));
+  assert.ok(['history', 'cycle', 'home'].every((f) => info.body.features.includes(f)));
   const st = (await server.request('GET', '/status')).body;
   assert.deepEqual(Object.keys(st.devices), ['conveyor', 'arm', 'leader', 'camera_top', 'camera_close']);
   assert.deepEqual(Object.keys(st.cameras), ['top', 'close']);
   assert.equal(st.fault, null);
   assert.equal(st.home_required, false);
   assert.equal(st.cycle, null);
+  // 저장된 원점 (v0.4): 서버가 가진다. 가짜 서버는 설정 파일에서 읽은 원점(대기 자세)으로 켜진다
+  assert.deepEqual(Object.keys(st.home.angles), ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper']);
+  assert.equal(st.home.unit, 'deg');
 });
 
 test('시작: 위 카메라가 끊겨 있으면 거절, 연결되면 가동', async (t) => {
@@ -97,7 +99,7 @@ test('불량: 로봇팔 작업(자세 → 학습 정책 → 자세)으로 불량
   assert.ok(got.some((m) => m.type === 'event' && m.data.code === 'defect_detected'));
 });
 
-test('집기 실패: 한 번 다시 시도 → 그래도 안 되면 GRIP_FAILED, 원점을 잡아야 다시 시작', async (t) => {
+test('집기 실패: 한 번 다시 시도 → 그래도 안 되면 GRIP_FAILED, 원점 복귀를 해야 다시 시작', async (t) => {
   const tasks = { sort_defect: { retry: { times: 1, from: 0 }, steps: [
     { pose: 'above_pick' }, { policy: 'grasp_part', timeout_s: 0.4, until: 'holding' }, { pose: 'above_bin' }, { gripper: 'open' }, { pose: 'wait' },
   ] } };
@@ -114,7 +116,7 @@ test('집기 실패: 한 번 다시 시도 → 그래도 안 되면 GRIP_FAILED,
   assert.equal(server.state.fault.params.step, 'grasp_part');
   assert.equal(server.state.home_required, true);
   assert.equal((await server.request('POST', '/line/start')).body.error.code, 'HOME_REQUIRED');
-  assert.equal((await server.request('POST', '/robot/home', { angles: HOME, unit: 'deg' })).status, 202);
+  assert.equal((await server.request('POST', '/robot/home')).status, 202);
   assert.ok(await until(() => server.state.line === 'stopped', 3000));
   assert.equal(server.state.fault, null);
   assert.equal(server.state.home_required, false);
@@ -122,7 +124,7 @@ test('집기 실패: 한 번 다시 시도 → 그래도 안 되면 GRIP_FAILED,
   await startLine(server);
 });
 
-test('긴급정지: 컨베이어를 잠그고 로봇팔 힘을 뺀다. 해제하면 컨베이어만 풀리고 원점이 필요하다', async (t) => {
+test('긴급정지: 컨베이어를 잠그고 로봇팔 힘을 뺀다. 해제하면 컨베이어만 풀리고 자동 시작에는 원점 복귀가 필요하다', async (t) => {
   const { server, device } = setup(t);
   await startLine(server);
   assert.equal((await server.request('POST', '/estop')).status, 200);
@@ -258,14 +260,73 @@ test('카메라: 하나만 켜기, 없는 카메라, 모두 끄기', async (t) =
   assert.equal(server.state.cameras.top.streaming || server.state.cameras.close.streaming, false);
 });
 
-test('원점: 정지 상태에서만, 각도 6개가 모두 있어야, 닿으면 끝', async (t) => {
+// 원점 (v0.4): 원점은 서버가 저장한다. 복귀 = 저장된 원점으로 이동(자동 모드·정지 상태), 잡기 = 지금 자세를 원점으로 저장(수동 모드)
+const POSE_A = { shoulder_pan: 25, shoulder_lift: -10, elbow_flex: 50, wrist_flex: 30, wrist_roll: 5, gripper: 40 };
+function placeArm(server, pose) { // 사람이 리더암으로 팔을 그 자세에 옮겨 둔 것처럼
+  Object.assign(server.arms.arm.pos, pose);
+  Object.assign(server.arms.arm.target, pose);
+}
+
+test('원점 복귀: 자동 모드·정지 상태에서만, 저장된 원점으로 옮기고 닿으면 끝', async (t) => {
   const { server, events } = setup(t);
-  assert.equal((await server.request('POST', '/robot/home', { angles: { shoulder_pan: 0 } })).body.error.code, 'INVALID_ANGLES');
-  assert.equal((await server.request('POST', '/robot/home', { angles: HOME, unit: 'deg' })).status, 202);
+  await server.request('PUT', '/mode', { mode: 'manual' });
+  assert.equal((await server.request('POST', '/robot/home')).body.error.code, 'NOT_AUTO');
+  await server.request('PUT', '/mode', { mode: 'auto' });
+  placeArm(server, POSE_A);
+  assert.equal((await server.request('POST', '/robot/home')).status, 202);
   assert.equal(server.state.line, 'homing');
-  assert.equal(server.arms.arm.target.elbow_flex, 0);
+  assert.deepEqual(server.arms.arm.target, server.state.home.angles);
   assert.ok(await until(() => server.state.line === 'stopped'));
   assert.ok(events().includes('home_completed:info'));
+  await startLine(server);
+  assert.equal((await server.request('POST', '/robot/home')).body.error.code, 'NOT_STOPPED');
+});
+
+test('원점 잡기: 수동 모드에서만(가동 중에도), 지금 자세를 원점으로 저장, 긴급정지 중에는 거절', async (t) => {
+  const { server, events } = setup(t);
+  assert.equal((await server.request('POST', '/robot/home/set')).body.error.code, 'NOT_MANUAL');
+  await server.request('PUT', '/mode', { mode: 'manual' });
+  placeArm(server, POSE_A);
+  const r = await server.request('POST', '/robot/home/set');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.home.angles, POSE_A);
+  assert.deepEqual(server.state.home.angles, POSE_A);
+  assert.ok(server.state.home.set_at);
+  assert.ok(events().includes('home_set:info'));
+  await startLine(server); // 가동 중 = 로봇팔이 리더암을 따라가는 중
+  assert.equal((await server.request('POST', '/robot/home/set')).status, 200);
+  await server.request('POST', '/estop');
+  assert.equal((await server.request('POST', '/robot/home/set')).body.error.code, 'ESTOP_ACTIVE');
+});
+
+test('원점은 자동 모드에만 필요: 긴급정지 뒤에도 수동 시작은 되고, 원점 잡기를 하면 자동 시작도 된다', async (t) => {
+  const { server } = setup(t);
+  await until(() => server.conv.opened, 2000);
+  await server.request('POST', '/estop');
+  await server.request('POST', '/estop/release');
+  assert.equal((await server.request('POST', '/line/start')).body.error.code, 'HOME_REQUIRED');
+  await server.request('PUT', '/mode', { mode: 'manual' });
+  await startLine(server);
+  assert.equal(server.state.home_required, true); // 자동으로 돌아가려면 아직 필요
+  assert.equal((await server.request('POST', '/robot/home/set')).status, 200);
+  assert.equal(server.state.home_required, false); // 팔이 새 원점에 있다
+  await server.request('POST', '/line/stop');
+  assert.ok(await until(() => server.state.line === 'stopped', 3000));
+  await server.request('PUT', '/mode', { mode: 'auto' });
+  await startLine(server);
+});
+
+test('저장된 원점이 없으면 원점 복귀·자동 시작은 HOME_NOT_SET, 수동 모드에서 원점 잡기로 만든다', async (t) => {
+  const { server } = setup(t, { seed: { home: null } });
+  await until(() => server.conv.opened, 2000);
+  assert.equal(server.state.home, null);
+  assert.equal((await server.request('POST', '/robot/home')).body.error.code, 'HOME_NOT_SET');
+  assert.equal((await server.request('POST', '/line/start')).body.error.code, 'HOME_NOT_SET');
+  await server.request('PUT', '/mode', { mode: 'manual' });
+  placeArm(server, POSE_A);
+  assert.equal((await server.request('POST', '/robot/home/set')).status, 200);
+  await server.request('PUT', '/mode', { mode: 'auto' });
+  await startLine(server);
 });
 
 test('기록 조회: 순번이 이어지고, after 뒤만, 분당 집계', async (t) => {
@@ -303,7 +364,8 @@ test('서버 연결이 끊긴 동안 생긴 이벤트도 기록 조회로 받는
 });
 
 test('다른 탭이 이어받기: 마지막 상태·판정 번호·기록 순번을 잇는다', (t) => {
-  const seed = { line: 'homing', estop: false, mode: 'manual', stats: { total: 41, good: 38, defect: 3 }, devices: { leader: 'disconnected' }, home_required: true };
+  const home = { angles: { shoulder_pan: 1, shoulder_lift: 2, elbow_flex: 3, wrist_flex: 4, wrist_roll: 5, gripper: 6 }, unit: 'deg', set_at: '2026-10-13T10:00:00+09:00' };
+  const seed = { line: 'homing', estop: false, mode: 'manual', stats: { total: 41, good: 38, defect: 3 }, devices: { leader: 'disconnected' }, home, home_required: true };
   const history = { runId: 'run-a', seq: 77, events: [{ seq: 77, code: 'line_started', level: 'info', params: {}, at: new Date().toISOString() }], inspections: [], minutes: [] };
   const server = new window.MockServer({ seed, history });
   t.after(() => server.destroy());
@@ -311,6 +373,7 @@ test('다른 탭이 이어받기: 마지막 상태·판정 번호·기록 순번
   assert.equal(server.state.mode, 'manual');
   assert.equal(server.state.devices.leader, 'disconnected');
   assert.equal(server.state.home_required, true);
+  assert.deepEqual(server.state.home, home);
   assert.equal(server.nextId, 42);
   assert.equal(server.runId, 'run-a');
   server.event('mode_changed', 'info', { mode: 'auto' });

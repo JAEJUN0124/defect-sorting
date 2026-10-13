@@ -390,6 +390,34 @@
   const stageName = (stage) => known('stage.' + stage, stage);
   const stepName = (step) => known('step.' + step, step);
 
+  // ---------- 원점 (docs/API.md v0.4) ----------
+  // 원점은 서버가 저장한다. 상태의 home: 객체 = 저장됨 · null = 아직 없음 · undefined = 서버가 알려 주지 않음(모름)
+
+  // 자동 시작을 막는 원점 문제: 'unset'(저장된 원점 없음) · 'required'(긴급정지·고장 뒤 원점 복귀 필요) · null.
+  // 원점은 자동 모드에만 필요하다 — 수동 모드는 사람이 리더암으로 팔을 움직인다
+  function homeBlock() {
+    const st = state.status;
+    if (!st || st.mode !== 'auto') return null;
+    if (st.home === null) return 'unset';
+    return st.homeRequired ? 'required' : null;
+  }
+
+  // 시각을 짧게: 오늘이면 시:분:초, 아니면 날짜와 시:분
+  function shortTime(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '–';
+    const p2 = (n) => String(n).padStart(2, '0');
+    const clock = p2(d.getHours()) + ':' + p2(d.getMinutes());
+    if (d.toDateString() === new Date().toDateString()) return clock + ':' + p2(d.getSeconds());
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + clock;
+  }
+
+  // 수동 모드의 원점 잡기 안내 — 마지막으로 저장한 때를 알면 함께 쓴다 (누른 뒤 저장됐는지 여기서 보인다)
+  function homeSetHint() {
+    const h = state.status && state.status.home;
+    return h && h.setAt ? t('home.setHint.saved', { time: shortTime(h.setAt) }) : t('home.setHint');
+  }
+
   // 값이 다 있으면 자세히, 빠진 값이 있으면 짧은 원인만
   function faultText(fault) {
     const p = Object.assign({}, fault.params);
@@ -466,5 +494,8 @@
     errorText,
     stageName,
     stepName,
+    homeBlock,
+    homeSetHint,
+    shortTime,
   };
 })();

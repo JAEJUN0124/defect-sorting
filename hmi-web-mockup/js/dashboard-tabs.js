@@ -6,7 +6,6 @@
 (function () {
   const cfg = window.HMI_CONFIG;
   const robot = window.HMI_ROBOT || {};
-  const homeCfg = window.HMI_HOME_POSITION || null;
   const api = window.HmiApi;
   const store = window.HmiStore;
   const ctl = window.HmiControls;
@@ -85,7 +84,7 @@
     alLog: $('al-log'), alLogEmpty: $('al-log-empty'), logFilter: $('log-filter'),
     ctRunHint: $('ct-run-hint'), ctModeDesc: $('ct-mode-desc'), ctJoints: $('ct-joints'), ctJointsList: $('ct-joints-list'),
     ctConds: $('ct-conds'), ctCondMeta: $('ct-cond-meta'), ctCondSum: $('ct-cond-sum'),
-    ctEstopState: $('ct-estop-state'), ctEstopHint: $('ct-estop-hint'), ctHomes: $('ct-homes'), ctCams: $('ct-cams'),
+    ctEstopState: $('ct-estop-state'), ctEstopHint: $('ct-estop-hint'), ctHomes: $('ct-homes'), ctHomeSaved: $('ct-home-saved'), ctCams: $('ct-cams'),
     sim: $('sim'), simKeys: Array.from(document.querySelectorAll('[data-sim]')),
   };
 
@@ -264,7 +263,7 @@
     }
     else if (fault) { detail = store.faultDetail(st.fault); error = true; }
     else if (p === 'running') detail = t('db.detail.running', { mode: modeWord(), duration: duration() });
-    else if (p === 'stopped' && st.homeRequired) detail = t('detail.homeRequired');
+    else if (p === 'stopped' && store.homeBlock()) detail = t(store.homeBlock() === 'unset' ? 'detail.homeNotSet' : 'detail.homeRequired'); // 자동 시작을 막는 원점 문제
     else if (p === 'stopped') detail = t('db.detail.stopped', { mode: modeWord() });
     else if (p === 'estop') detail = t('db.detail.estop');
     else if (p === 'unknown') detail = t('detail.unknown', { state: st.lineRaw });
@@ -906,7 +905,10 @@
       on && st.fault ? store.faultDetail(st.fault) : t('ctl.cond.fixFault'));
     const powerBad = ['arm'].concat(manual ? ['leader'] : []).some((arm) => supplyLevel(supplyOf(arm), supplyCfg(arm)) === 'alarm');
     add('power', t('ctl.cond.power'), ...known(!powerBad, t('ctl.cond.normal'), t('ctl.cond.abnormal')), t('ctl.cond.fixPower'));
-    add('home', t('ctl.cond.home'), ...known(on && !st.homeRequired, t('ctl.cond.homeOk'), t('ctl.cond.homeNeeded')), t('ctl.cond.fixHome'));
+    // 원점은 자동 모드에만 필요하다: 저장된 원점이 있고, 긴급정지·로봇팔 고장 뒤라면 원점 복귀를 마쳤어야 한다 (v0.4)
+    if (manual) add('home', t('ctl.cond.home'), 'skip', t('ctl.cond.autoOnly'), '');
+    else if (on && st.home === null) add('home', t('ctl.cond.home'), 'bad', t('ctl.cond.homeNotSet'), t('ctl.cond.fixHomeNotSet'));
+    else add('home', t('ctl.cond.home'), ...known(on && !st.homeRequired, t('ctl.cond.homeOk'), t('ctl.cond.homeNeeded')), t('ctl.cond.fixHome'));
     // 오른쪽 줄: 운전 모드에 필요한 장치 (리더암은 수동에서만). 서버가 아직 알려 주지 않은 장치도 '모름'
     const primary = 'camera_' + store.primaryCamera();
     ['conveyor', 'arm', primary, 'leader'].forEach((id) => {
@@ -953,30 +955,35 @@
     setLevel(el.ctCondSum, bad.length && !['running'].includes(p) ? 'warning' : null);
   }
 
-  // 원점 각도(설정 파일)와 로봇팔의 지금 각도 — 원점 잡기가 얼마나 움직일지
+  // 저장된 원점(서버)과 로봇팔의 지금 각도 — 원점 복귀가 얼마나 움직일지. 원점은 수동 모드의 원점 잡기로 바뀐다
   function renderHomes() {
-    const joints = (homeCfg && homeCfg.joints) || [];
+    const st = S();
+    const home = st && online() ? st.home : undefined;
     if (!el.ctHomes.firstChild) {
-      joints.forEach((j) => {
+      JOINTS.forEach((j) => {
         const tr = el.ctHomes.insertRow();
         const th = document.createElement('th');
         th.scope = 'row';
-        th.textContent = store.jointName(j.id);
+        th.textContent = store.jointName(j);
         tr.appendChild(th);
-        const target = tr.insertCell();
-        target.className = 'num';
-        target.textContent = j.angle + (j.id === 'gripper' ? '%' : homeCfg.unit === 'norm' ? '' : '°');
-        const now = tr.insertCell();
-        now.className = 'num';
-        now.textContent = '–';
+        tr.insertCell().className = 'num';
+        tr.insertCell().className = 'num';
       });
     }
+    const angle = (v, unit) => (num(v) ? v.toFixed(1) + (unit === 'pct' ? '%' : '°') : '–');
     const motors = liveMotors('arm');
-    joints.forEach((j, i) => {
-      const m = motors[j.id] || {};
-      const unit = m.posUnit || (j.id === 'gripper' ? 'pct' : 'deg');
-      el.ctHomes.rows[i].cells[2].textContent = num(m.pos) ? m.pos.toFixed(1) + (unit === 'pct' ? '%' : '°') : '–';
+    JOINTS.forEach((j, i) => {
+      const m = motors[j] || {};
+      const cells = el.ctHomes.rows[i].cells;
+      cells[1].textContent = home ? angle(home.angles[j], home.units[j]) : '–';
+      cells[2].textContent = angle(m.pos, m.posUnit || (j === 'gripper' ? 'pct' : 'deg'));
     });
+    let saved;
+    if (home) saved = home.setAt ? t('ctl.home.savedAt', { time: store.shortTime(home.setAt) }) : t('ctl.home.saved');
+    else if (home === null) saved = t('home.notSet');
+    else saved = st && online() ? t('ctl.home.unknown') : '';
+    el.ctHomeSaved.textContent = saved;
+    el.ctHomeSaved.hidden = !!st && st.mode === 'manual'; // 수동 모드에서는 키 아래 안내가 마지막 저장 시각을 함께 쓴다
   }
 
   // 수동 모드에서만: 리더암 각도 (조작 화면의 운전 모드 아래와 같다)
@@ -1422,9 +1429,12 @@
       <div class="page__head">
         <h1 class="page__title">${esc(t('dbt.page.' + arm))}</h1>
         ${arm === 'arm' ? `<div class="page__tools">
-          <p class="note" data-note="home" data-note-short hidden></p>
+          <p class="note" data-note="home set-home" data-note-short hidden></p>
           <button type="button" class="key key--quiet ctl__inline" data-ctl="home">
-            <svg class="key__icon" aria-hidden="true"><use href="#i-home"></use></svg><span>${esc(t('home.label'))}</span>
+            <svg class="key__icon" aria-hidden="true"><use href="#i-home"></use></svg><span>${esc(t('home.go'))}</span>
+          </button>
+          <button type="button" class="key key--quiet ctl__inline" data-ctl="set-home">
+            <svg class="key__icon" aria-hidden="true"><use href="#i-sethome"></use></svg><span>${esc(t('home.set'))}</span>
           </button>
         </div>` : ''}
       </div>
@@ -1803,12 +1813,13 @@
       [t('dbt.sys.supplyLeader'), sl ? sl.warnLow + '–' + sl.warnHigh + 'V' : null],
     ]);
 
+    // 원점은 서버가 저장한다 (수동 모드의 원점 잡기로 바뀐다)
+    const home = S() ? S().home : undefined;
     const homeRows = [];
-    if (homeCfg) {
-      const unit = homeCfg.unit === 'norm' ? '' : '°';
-      (homeCfg.joints || []).forEach((j) => homeRows.push([store.jointName(j.id), j.angle + (j.id === 'gripper' ? '%' : unit)]));
-      homeRows.push([t('dbt.sys.homeState'), t(homeCfg.provisional ? 'dbt.sys.provisional' : 'dbt.sys.set'), homeCfg.provisional ? 'note' : null]);
-    } else homeRows.push([t('home.label'), t('dbt.sys.noHome'), 'note']);
+    if (home) {
+      JOINTS.forEach((j) => homeRows.push([store.jointName(j), num(home.angles[j]) ? home.angles[j].toFixed(1) + (home.units[j] === 'pct' ? '%' : '°') : null]));
+      homeRows.push([t('dbt.sys.homeSaved'), home.setAt ? store.shortTime(home.setAt) : t('dbt.sys.homeSavedUnknown')]);
+    } else homeRows.push([t('ctl.home.title'), t(home === null ? 'dbt.sys.noHome' : 'dbt.sys.homeUnknown'), 'note']);
     facts($('sy-home'), homeRows);
 
     const themeSet = document.documentElement.dataset.theme;

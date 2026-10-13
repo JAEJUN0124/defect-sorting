@@ -1,4 +1,4 @@
-// 서버 연결 — 명령을 보내고 실시간 메시지를 받아, adapter.js로 모양을 맞춰 화면에 넘깁니다 (docs/API.md v0.3).
+// 서버 연결 — 명령을 보내고 실시간 메시지를 받아, adapter.js로 모양을 맞춰 화면에 넘깁니다 (docs/API.md v0.4).
 // 연결 방식(push·commands)은 config.js의 server 설정으로 고릅니다 (transport.js).
 // useMock이 true면 같은 모양의 가짜 서버(mock-server.js, 탭 사이 공유는 mock-hub.js)로 바꿔 끼웁니다.
 (function () {
@@ -137,7 +137,9 @@
     stop: () => call('stop'),
     estop: () => call('estop'),
     releaseEstop: () => call('release'),
-    home: (angles, unit) => call('home', unit ? { angles, unit } : { angles }),
+    // 원점 복귀: 서버가 저장한 원점으로 옮긴다 (자동 모드·정지 상태). 원점 잡기: 로봇팔의 지금 자세를 원점으로 저장한다 (수동 모드)
+    home: () => call('home'),
+    setHome: () => call('setHome'),
     setMode: (mode) => call('mode', { mode: modeValue(mode) }),
     startCamera: (camera) => call('cameraStart', camera ? { camera } : undefined),
     stopCamera: (camera) => call('cameraStop', camera ? { camera } : undefined),

@@ -2,8 +2,8 @@
 // 서버 연결과 상태 모으기는 store.js, 영상은 camera.js가 맡습니다.
 (function () {
   const cfg = window.HMI_CONFIG;
-  const home = window.HMI_HOME_POSITION;
   const robot = window.HMI_ROBOT || {};
+  const JOINTS = robot.joints || ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper'];
   const api = window.HmiApi;
   const store = window.HmiStore;
   const { t } = window.I18N;
@@ -20,7 +20,7 @@
     stateLamp: $('state-lamp'), stateWord: $('state-word'), stateDetail: $('state-detail'),
     estop: $('btn-estop'), estopLabel: $('estop-label'), estopNote: $('estop-note'), release: $('btn-release'),
     run: $('btn-run'), runIcon: $('run-icon'), runLabel: $('run-label'), runNote: $('run-note'),
-    home: $('btn-home'), homeNote: $('home-note'),
+    home: $('btn-home'), setHome: $('btn-sethome'), homeNote: $('home-note'),
     modeKeys: Array.from(document.querySelectorAll('.key--mode')), modeNote: $('mode-note'),
     joints: $('joints'), jointsList: $('joints-list'),
     exit: $('btn-exit'), exitNote: $('exit-note'),
@@ -109,8 +109,9 @@
   function renderState(p) {
     const fault = p === 'stopped' && S().fault;
     el.stateWord.textContent = t('state.' + p);
+    const homeBlock = p === 'stopped' ? store.homeBlock() : null; // 자동 시작을 막는 원점 문제 (수동 모드에서는 없음)
     if (fault) el.stateDetail.textContent = store.faultDetail(S().fault);
-    else if (p === 'stopped' && S().homeRequired) el.stateDetail.textContent = t('detail.homeRequired');
+    else if (homeBlock) el.stateDetail.textContent = t(homeBlock === 'unset' ? 'detail.homeNotSet' : 'detail.homeRequired');
     else if (p === 'stopped' || p === 'running') el.stateDetail.textContent = t('detail.' + p + '.' + modeKey());
     else if (p === 'unknown') el.stateDetail.textContent = t('detail.unknown', { state: S().lineRaw });
     else el.stateDetail.textContent = t('detail.' + p);
@@ -138,14 +139,22 @@
     el.runLabel.textContent = t(running ? 'run.stop' : 'run.start');
     el.runIcon.setAttribute('href', running ? '#i-stop' : '#i-play');
     el.run.disabled = !(stopped || running) || ui.busy.has('run');
-    // 누르기 전에 알 수 있는 이유: 가동 중이면 잠긴 조작, 원점이 필요하면 원점 먼저
-    const runHint = running ? { text: t('run.locked') } : stopped && S().homeRequired ? { text: t('run.homeFirst') } : null;
+    // 누르기 전에 알 수 있는 이유: 가동 중이면 잠긴 조작, 자동 모드에서 원점이 없거나 원점 복귀가 필요하면 그것 먼저
+    const homeBlock = stopped ? store.homeBlock() : null;
+    const runHint = running ? { text: t('run.locked') } : homeBlock ? { text: t(homeBlock === 'unset' ? 'run.homeNotSet' : 'run.homeFirst') } : null;
     setNote(el.runNote, ui.notes.run || runHint);
 
-    // 원점 — 정지 상태에서만
-    el.home.disabled = !stopped || ui.busy.has('home');
-    const homeHint = stopped && S().homeRequired ? { text: t('home.needed') } : cfg.devMode && home.provisional ? { text: t('home.provisional') } : null;
-    setNote(el.homeNote, ui.notes.home || homeHint);
+    // 원점 — 복귀는 자동 모드·정지 상태(저장된 원점이 있을 때), 잡기는 수동 모드(정지·가동 중 — 리더암으로 자세를 잡는 동안).
+    // 긴급정지 중(팔에 힘이 빠짐)에는 둘 다 잠긴다. 모드 때문에 못 누르는 키는 마우스를 올리면 이유가 보인다
+    const manual = modeKey() === 'manual';
+    el.home.disabled = !stopped || manual || S().home === null || ui.busy.has('home');
+    el.home.title = manual ? t('home.go.autoOnly') : '';
+    el.setHome.disabled = !(stopped || running) || !manual || ui.busy.has('setHome');
+    el.setHome.title = manual ? '' : t('home.set.manualOnly');
+    let homeHint = null;
+    if (homeBlock) homeHint = { text: t(homeBlock === 'unset' ? 'home.notSet' : 'home.needed') };
+    else if (manual && (stopped || running)) homeHint = { text: store.homeSetHint() };
+    setNote(el.homeNote, ui.notes.setHome || ui.notes.home || homeHint);
 
     // 운전 모드 — 정지 상태에서만
     el.modeKeys.forEach((key) => {
@@ -186,10 +195,10 @@
     el.joints.hidden = !show;
     if (!show) return;
     const leader = store.state.joints.leader;
-    home.joints.forEach((j) => {
-      const v = leader && leader.angles ? leader.angles[j.id] : undefined;
-      const unit = leader && leader.units && leader.units[j.id] === 'pct' ? '%' : '°';
-      jointCells[j.id].textContent = typeof v === 'number' ? Math.round(v) + unit : '–';
+    JOINTS.forEach((j) => {
+      const v = leader && leader.angles ? leader.angles[j] : undefined;
+      const unit = leader && leader.units && leader.units[j] === 'pct' ? '%' : '°';
+      jointCells[j].textContent = typeof v === 'number' ? Math.round(v) + unit : '–';
     });
   }
 
@@ -374,9 +383,11 @@
     act('run', () => (running ? api.stop() : api.start()));
   });
 
-  el.home.addEventListener('click', () => {
-    const angles = Object.fromEntries(home.joints.map((j) => [j.id, j.angle]));
-    act('home', () => api.home(angles, home.unit));
+  el.home.addEventListener('click', () => act('home', () => api.home()));
+
+  // 원점 잡기는 저장된 원점을 덮어쓴다 — 확인 창을 거친다. 저장한 때는 키 아래 안내에 보인다
+  el.setHome.addEventListener('click', async () => {
+    if (await confirmDialog('setHome')) await act('setHome', () => api.setHome());
   });
 
   el.modeKeys.forEach((key) => key.addEventListener('click', () => {
@@ -418,15 +429,15 @@
   // ---------- 시작 ----------
 
   function buildJoints() {
-    home.joints.forEach((j) => {
+    JOINTS.forEach((j) => {
       const row = document.createElement('div');
       const dt = document.createElement('dt');
       const dd = document.createElement('dd');
-      dt.textContent = t('joint.' + j.id);
+      dt.textContent = t('joint.' + j);
       dd.textContent = '–';
       row.append(dt, dd);
       el.jointsList.appendChild(row);
-      jointCells[j.id] = dd;
+      jointCells[j] = dd;
     });
   }
 

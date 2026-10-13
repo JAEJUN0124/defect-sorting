@@ -1,4 +1,4 @@
-// 서버 형식 맞추기 — 서버가 어떤 모양으로 보내도 HMI 안에서는 한 가지 모양(docs/API.md v0.3)으로 바꿔 씁니다.
+// 서버 형식 맞추기 — 서버가 어떤 모양으로 보내도 HMI 안에서는 한 가지 모양(docs/API.md v0.4)으로 바꿔 씁니다.
 // 서버 담당이 이름·단위·묶음 방식을 다르게 정해도 화면 코드는 고치지 않고, 여기서 흡수합니다.
 // 무엇을 바꿨는지는 notes()에 쌓입니다. tools/server-check.html이 이 기록으로 "서버가 어떤 형식인지" 보여 줍니다.
 // 대응표: docs/server-cases.md
@@ -99,6 +99,9 @@
     DEVICES_NOT_READY: ['DEVICE_NOT_READY', 'NOT_READY', 'DEVICE_DISCONNECTED', 'DEVICES_DISCONNECTED', 'HARDWARE_NOT_READY'],
     NOT_STOPPED: ['NOT_IDLE', 'RUNNING', 'LINE_RUNNING', 'MUST_BE_STOPPED', 'NOT_STOPPED_STATE'],
     INVALID_STATE: ['BUSY', 'INVALID_STATE_TRANSITION', 'WRONG_STATE', 'ILLEGAL_STATE', 'CONFLICT'],
+    NOT_AUTO: ['MODE_MANUAL', 'NOT_AUTO_MODE', 'NOT_IN_AUTO', 'AUTO_ONLY', 'AUTO_MODE_REQUIRED'],
+    NOT_MANUAL: ['MODE_AUTO', 'NOT_MANUAL_MODE', 'NOT_IN_MANUAL', 'MANUAL_ONLY', 'MANUAL_MODE_REQUIRED'],
+    HOME_NOT_SET: ['NO_HOME', 'HOME_UNSET', 'HOME_MISSING', 'ORIGIN_NOT_SET', 'NO_ORIGIN'],
   };
   const ERROR_OF = new Map();
   Object.entries(ERROR_ALIAS).forEach(([code, names]) => names.forEach((n) => ERROR_OF.set(n, code)));
@@ -111,6 +114,7 @@
     mode_changed: ['mode_change', 'mode_set', 'mode_switched'],
     home_started: ['homing_started', 'home_start'],
     home_completed: ['homed', 'home_done', 'homing_done', 'homing_completed', 'home_complete'],
+    home_set: ['home_saved', 'home_updated', 'set_home', 'home_taught', 'origin_set', 'origin_saved'],
     defect_detected: ['ng_detected', 'defect_found'],
     device_disconnected: ['disconnected', 'device_lost', 'connection_lost'],
     device_reconnected: ['reconnected', 'device_connected'],
@@ -351,6 +355,20 @@
       };
     }
 
+    // 저장된 원점(v0.4): { angles, units, unit, setAt } 또는 null(아직 저장하지 않음). 모르는 모양이면 undefined(상태에 넣지 않음)
+    // 원점은 서버가 가진다 — 수동 모드에서 "원점 잡기"를 누르면 로봇팔의 지금 자세를 저장한다
+    function homePose(raw) {
+      if (raw === null || raw === false || raw === '') return null;
+      if (!isObj(raw) && !Array.isArray(raw)) { note('home.unknown'); return undefined; }
+      const unit = jointUnit(isObj(raw) ? val(raw, ['unit', 'units', 'angleunit']) : null);
+      let body = isObj(raw) ? val(raw, ['angles', 'positions', 'joints', 'pose', 'values', 'qpos'], 'angles') : raw;
+      if (body === undefined) { body = raw; note('home.flat'); }
+      const out = angleMap(body, unit, 'arm');
+      if (!Object.keys(out.angles).length) return null;
+      const at = isObj(raw) ? val(raw, ['setat', 'savedat', 'updatedat', 'at', 'time', 'timestamp'], 'set_at') : undefined;
+      return { angles: out.angles, units: out.units, unit, setAt: time(at) };
+    }
+
     // 상태는 바뀐 부분만 와도 된다. 온 필드만 돌려주고, 합치는 일은 store.js가 한다
     function status(raw) {
       const out = {};
@@ -397,8 +415,10 @@
       if (f) out.fault = fault(f.value);
       const started = pick(raw, ['startedat', 'runstartedat', 'since', 'runningsince', 'starttime', 'linestartedat']);
       if (started) out.startedAt = time(started.value);
-      const home = pick(raw, ['homerequired', 'needshome', 'homingrequired', 'homeneeded', 'requireshome', 'musthome'], 'home_required');
-      if (home) { const b = bool(home.value); if (b !== null) out.homeRequired = b; }
+      const homeReq = pick(raw, ['homerequired', 'needshome', 'homingrequired', 'homeneeded', 'requireshome', 'musthome'], 'home_required');
+      if (homeReq) { const b = bool(homeReq.value); if (b !== null) out.homeRequired = b; }
+      const home = pick(raw, ['home', 'homepose', 'homeposition', 'homeangles', 'savedhome', 'origin', 'originpose'], 'home');
+      if (home) { const h = homePose(home.value); if (h !== undefined) out.home = h; }
       const cyc = pick(raw, ['cycle', 'process', 'cyclestate', 'processstage', 'stage'], 'cycle');
       if (cyc) out.cycle = cycle(cyc.value);
       return out;
