@@ -1,5 +1,8 @@
 # 서버 형식 대응표 — 서버가 어떻게 만들어지든 바로 맞추기
 
+> **서버 형식이 정해졌습니다 (D-002): 웹소켓 하나 + XML, 서버 담당 규약 v1.0.** HMI 쪽 사용법은 [xml-protocol.md](xml-protocol.md)입니다.
+> 이 표는 `config.js`의 `server.format`을 `'json'`으로 둘 때(예전 HTTP·JSON 초안) 쓰는 대응표로 남깁니다.
+
 서버는 다른 팀원이 만들고, 무엇을 어떻게 보낼지는 아직 정해지지 않았습니다. 그래서 HMI는
 **서버가 보내는 모양을 스스로 맞춰 읽고**(`hmi-web-mockup/js/adapter.js`), 맞출 수 없는 것은 **설정 한 줄**(`js/config.js`, `config/robot.js`)로 바꾸게 만들었습니다.
 이 문서는 "서버가 이렇게 오면 → HMI는 이렇게 하고 → 우리는 이것을 바꾼다"를 사례별로 정리한 표입니다. 권하는 기준 형식은 [API.md](API.md)입니다.
@@ -14,7 +17,7 @@
 python hmi-web-mockup/tools/dev-server.py 5173
 ```
 
-`http://localhost:5173/tools/server-check.html` → API 주소·실시간 주소를 넣고 **점검 시작**.
+`http://localhost:5173/tools/server-check.html` → 형식을 고르고(XML이면 실시간 주소만) API 주소·실시간 주소를 넣고 **점검 시작**.
 서버 정보·상태를 묻고(GET), 실시간 메시지를 듣기만 합니다(명령은 보내지 않음). 결과로 다음을 보여 줍니다.
 
 - 막는 문제 (서버에 안 닿음, CORS, 상태에 필수 값 없음, 모르는 상태 값 …)
@@ -25,10 +28,11 @@ python hmi-web-mockup/tools/dev-server.py 5173
 설정 파일을 고치기 전에 주소만 바꿔 화면을 시험할 수도 있습니다.
 
 ```
-http://localhost:5173/?mock=0&api=http://192.168.0.10:8000/api&ws=ws://192.168.0.10:8000/ws&push=socketio
+http://localhost:5173/?mock=0&format=json&api=http://192.168.0.10:8000/api&ws=ws://192.168.0.10:8000/ws&push=socketio
 ```
 
-`mock=0`(실제 서버) · `api` · `ws` · `push`(`ws`·`socketio`·`sse`·`poll`)를 주소 뒤에 붙입니다. 대시보드로 가는 버튼도 같은 설정을 넘깁니다.
+`mock=0`(실제 서버) · `format`(`xml`·`json`, 기본 `xml`) · `api` · `ws` · `push`(`ws`·`socketio`·`sse`·`poll`)를 주소 뒤에 붙입니다. 대시보드로 가는 버튼도 같은 설정을 넘깁니다.
+XML 서버는 `?mock=0&ws=ws://192.168.0.10:5080/ws/hmi`면 됩니다.
 
 ## 2. 주소와 연결
 
@@ -76,7 +80,7 @@ Socket.IO의 Engine.IO 3(python-socketio 4.x 이하)은 지원하지 않습니�
 
 | 서버가 이렇게 하면 | HMI 동작 | 할 일 |
 |---|---|---|
-| REST 경로·방식이 다름 (`POST /run`, `POST /mode/set`) | — | **설정** `server.paths: { start: '/run', mode: 'POST /mode/set' }` (이름: `info status start stop estop release home setHome mode cameraStart cameraStop shutdown`) |
+| REST 경로·방식이 다름 (`POST /run`, `POST /mode/set`) | — | **설정** `server.paths: { start: '/run', mode: 'POST /mode/set' }` (이름: `info status start stop estop release home mode cameraStart cameraStop shutdown`) |
 | 명령을 웹소켓으로만 받음 | `{type:'command', data:{id, name, body}}`를 보내고 `command_result`를 기다림 | **설정** `server.commands: 'ws'`, 이름이 다르면 `server.commandNames` |
 | 명령을 Socket.IO 이벤트로 받음 | 이벤트 이름 = 명령 이름, 응답(ack)을 결과로 씀 | **설정** `push: 'socketio'` + `commands: 'ws'` |
 | 운전 모드 값이 `AUTO`/`MANUAL` 등 | 받을 때는 자동. 보낼 때 다르면 422가 나고 화면에 "요청 형식을 받지 않았습니다" | **설정** `server.modeValues: { auto: 'AUTO', manual: 'MANUAL' }` (서버 점검이 대문자를 보면 이 줄을 만들어 줌) |
@@ -180,7 +184,7 @@ Socket.IO의 Engine.IO 3(python-socketio 4.x 이하)은 지원하지 않습니�
 |---|---|---|
 | LeRobot 그대로 `{"shoulder_pan.pos": 12.3, ...}` | 자동 | — |
 | 단위 도 (LeRobot `use_degrees=True`, 기본) | 관절 °, 그리퍼 % | — |
-| 단위 정규화 (`use_degrees=False`, -100~100) | `unit`을 보내면 자동, 아니면 | **설정** `config/robot.js jointUnit: 'norm'` (원점은 서버가 저장하고 상태 `home.unit`으로 단위를 함께 보냄) |
+| 단위 정규화 (`use_degrees=False`, -100~100) | `unit`을 보내면 자동, 아니면 | **설정** `config/robot.js jointUnit: 'norm'` (원점은 HMI가 저장하고, 원점 복귀 때 관절마다 단위를 함께 보냄) |
 | 라디안 | 도로 바꿈 (`unit: 'rad'` 또는 설정) | **설정** `jointUnit: 'rad'` |
 | 서보 원시값 0~4095 | 도로 바꿈 (서버 정보의 캘리브레이션 최소·최대가 있으면 LeRobot과 같게) | **설정** `jointUnit: 'raw'` |
 | 관절을 배열 `[6개]`, `joint1~6`, `j1`, `base`·`elbow` | 자동 (1~6번 순서) | — |
@@ -244,6 +248,4 @@ python hmi-web-mockup/tests/variant-server.py 8765
 | 원점 필요를 다른 이름으로 (`needs_home` 등) | 자동 | — |
 | `fault.clear`가 없음 | `auto`로 봄 ("원인을 없앤 뒤 시작하세요") | 원점·확인으로 풀리는 고장이면 **요청**: `clear` |
 | `clear` 값이 다름 (`ack`·`confirm`·`homing`) | 자동 (`ack`·`confirm` → `start`, `homing` → `home`) | — |
-| (v0.4) 저장된 원점 `home`이 없음 | 원점이 있는지 모르는 것으로 보고 원점 복귀 키를 막지 않음. 서버가 `409 HOME_NOT_SET`으로 거절하면 그때 이유를 보임. 대시보드 탭 시안의 원점 표는 비어 보임 | **요청**: `home` |
-| (v0.4) 원점을 다른 이름으로 (`origin`·`home_pose`, 각도를 `positions`·LeRobot `.pos`·배열로) | 자동 (관절 단위도 `joints`와 같게 바꿈) | — |
-| (v0.4) 원점 잡기 경로가 다름 (`POST /robot/origin` 등) | — | **설정** `server.paths: { setHome: 'POST /robot/origin' }` |
+| (v0.5) 원점 | 원점은 HMI가 저장한다 — 서버가 상태에 `home`을 보내도 쓰지 않음. 원점 잡기는 서버 명령이 없고, 원점 복귀는 본문에 각도(`angles`·`units`·`unit`)를 실어 보냄 | 원점 복귀 경로가 다르면 **설정** `server.paths: { home: 'POST /robot/origin' }` |

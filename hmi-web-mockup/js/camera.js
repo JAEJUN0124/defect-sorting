@@ -13,10 +13,20 @@
   const LOCAL_KEY = 'hmi.localCameras'; // tools/devices.html이 저장하는 { 카메라 id: 브라우저 장치 id }
   const COLORS = { good: '#46B07A', defect: '#F2B705', tagText: '#1C2024' };
 
-  // 상대 주소는 서버 주소를 기준으로 푼다. 웹소켓이면 http → ws
+  // 상대 주소는 서버 주소를 기준으로 푼다. 웹소켓이면 http → ws.
+  // XML 서버는 웹소켓 주소 하나뿐이라 그 주소(http로 바꿔)를 기준으로 한다 (예: /camera/top → http://서버:5080/camera/top)
+  function httpBase() {
+    if (cfg.server && cfg.server.format === 'xml' && !cfg.useMock) {
+      const u = new URL(cfg.wsUrl);
+      u.protocol = u.protocol === 'wss:' ? 'https:' : 'http:';
+      return u.href;
+    }
+    return cfg.apiBase.replace(/\/?$/, '/');
+  }
+
   function resolveUrl(url, ws) {
     try {
-      const u = new URL(url, ws ? cfg.wsUrl : cfg.apiBase.replace(/\/?$/, '/'));
+      const u = new URL(url, ws ? cfg.wsUrl : httpBase());
       if (ws && /^http/.test(u.protocol)) u.protocol = u.protocol.replace('http', 'ws');
       return u.href;
     } catch (e) {

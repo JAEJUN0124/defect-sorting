@@ -90,9 +90,8 @@
         mode: 'auto',
         fault: null,
         started_at: null,
-        // 저장된 원점 (v0.4). 원점은 서버가 가진다 — 수동 모드의 "원점 잡기"가 로봇팔의 지금 자세로 바꾼다.
-        // 가짜 서버는 설정 파일에서 원점을 읽었고 팔이 그 자세로 켜진다고 본다 (실제 서버는 켤 때 팔 자세를 모르면 home_required: true)
-        home: { angles: roundPose(POSE.wait), unit: 'deg', set_at: null },
+        // 원점은 서버가 아니라 HMI가 저장한다 (v0.5) — 원점 복귀 명령이 각도를 함께 가져온다.
+        // 원점 복귀가 필요한지(긴급정지·로봇팔 고장 뒤)는 서버가 안다. 가짜 서버는 팔이 대기 자세로 켜진다고 본다
         home_required: false,
         cycle: null,
         devices: { conveyor: 'connected', arm: 'connected', leader: 'connected', camera_top: 'connected', camera_close: 'connected' },
@@ -141,7 +140,7 @@
     // 다른 탭이 가짜 서버를 넘겨받을 때 마지막 상태에서 이어 간다 (mock-hub.js)
     restore(seed) {
       const s = this.state;
-      ['line', 'estop', 'mode', 'fault', 'started_at', 'home', 'home_required'].forEach((k) => { if (seed[k] !== undefined) s[k] = seed[k]; });
+      ['line', 'estop', 'mode', 'fault', 'started_at', 'home_required'].forEach((k) => { if (seed[k] !== undefined) s[k] = seed[k]; });
       if (!['stopped', 'running'].includes(s.line)) s.line = 'stopped';
       if (s.line === 'running') s.cycle = { stage: 'feeding', part: null, step: null }; // 다루던 부품은 이어 가지 않는다
       if (seed.devices) Object.assign(s.devices, seed.devices);
@@ -786,8 +785,8 @@
 
     'GET /info'() {
       return ok({
-        api: '0.4',
-        server: { name: 'mock-server', version: '0.4.0' },
+        api: '0.5',
+        server: { name: 'mock-server', version: '0.5.0' },
         joint_unit: 'deg',
         cameras: [
           { id: 'top', transport: 'mock', width: 1280, height: 720, fps: 30 },
@@ -821,8 +820,7 @@
       if (s.estop) return fail(409, 'ESTOP_ACTIVE');
       if (s.line !== 'stopped') return fail(409, 'INVALID_STATE', { line: s.line });
       if (s.fault && (s.fault.clear || 'auto') === 'auto') return fail(409, 'FAULT_ACTIVE', { fault: s.fault.code, params: s.fault.params });
-      // 원점은 자동 모드에만 필요하다 — 수동 모드는 사람이 리더암으로 팔을 움직인다 (v0.4)
-      if (s.mode === 'auto' && !s.home) return fail(409, 'HOME_NOT_SET');
+      // 원점 복귀 필요는 자동 모드에만 — 수동 모드는 사람이 리더암으로 팔을 움직인다. 저장된 원점이 있는지는 HMI가 본다(v0.5)
       if (s.mode === 'auto' && s.home_required) return fail(409, 'HOME_REQUIRED');
       if (s.mode === 'manual' && this.wrongVoltage('leader', this.voltageOf('leader'))) return fail(409, 'POWER_ABNORMAL', { arm: 'leader' });
       // clear: start — 시작이 곧 확인. 수동 모드면 clear: home 고장도 사람이 팔을 넘겨받은 것으로 본다 (원점 복귀 필요는 남아 자동 시작을 막는다)
@@ -903,15 +901,18 @@
       return ok(this.snapshot());
     },
 
-    // 원점 복귀 (v0.4): 저장된 원점으로 천천히 옮긴다. 자동 모드·정지 상태에서만 — 수동 모드는 리더암이 팔을 움직인다
-    'POST /robot/home'() {
+    // 원점 복귀 (v0.5): HMI가 보낸 원점 각도로 천천히 옮긴다. 자동 모드·정지 상태에서만 — 수동 모드는 리더암이 팔을 움직인다.
+    // 원점은 HMI가 저장한다 — 각도가 없으면 HOME_NOT_SET, 숫자가 아닌 관절이 있으면 INVALID_ANGLES
+    'POST /robot/home'(body) {
       const s = this.state;
       if (s.estop) return fail(409, 'ESTOP_ACTIVE');
       if (s.mode !== 'auto') return fail(409, 'NOT_AUTO');
       if (s.line !== 'stopped') return fail(409, 'NOT_STOPPED');
-      if (!s.home) return fail(409, 'HOME_NOT_SET');
+      if (!body || !body.angles) return fail(409, 'HOME_NOT_SET');
+      const bad = JOINTS.filter((j) => typeof body.angles[j] !== 'number' || !Number.isFinite(body.angles[j]));
+      if (bad.length) return fail(422, 'INVALID_ANGLES', { joints: bad });
       if (s.devices.arm !== 'connected') return fail(409, 'DEVICES_NOT_READY', { missing: ['arm'] });
-      const angles = s.home.angles;
+      const angles = body.angles;
       s.line = 'homing';
       this.homeTarget = Object.fromEntries(JOINTS.map((j) => [j, angles[j]]));
       Object.assign(this.arms.arm.target, this.homeTarget);
@@ -920,22 +921,6 @@
       const far = Math.max(...JOINTS.map((j) => Math.abs(angles[j] - this.arms.arm.pos[j])));
       this.timers.home = setTimeout(() => this.finishHome(false), (far / this.armSpeed) * 1000 + 3000);
       return accepted();
-    },
-
-    // 원점 잡기 (v0.4): 로봇팔(팔로워)의 지금 자세를 원점으로 저장한다. 수동 모드에서만 — 사람이 리더암으로 팔을 원하는 자세에 둔 뒤 누른다.
-    // 가동 중(리더암을 따라가는 중)에도 받는다. 힘이 빠진 긴급정지 중에는 받지 않는다. 팔이 원점에 있으므로 원점 복귀 필요도 풀린다
-    'POST /robot/home/set'() {
-      const s = this.state;
-      if (s.estop) return fail(409, 'ESTOP_ACTIVE');
-      if (s.mode !== 'manual') return fail(409, 'NOT_MANUAL');
-      if (!['stopped', 'running'].includes(s.line)) return fail(409, 'INVALID_STATE', { line: s.line });
-      if (s.devices.arm !== 'connected') return fail(409, 'DEVICES_NOT_READY', { missing: ['arm'] });
-      s.home = { angles: roundPose(this.arms.arm.pos), unit: 'deg', set_at: now() };
-      s.home_required = false;
-      if (s.fault && s.fault.clear === 'home') s.fault = null;
-      this.pushStatus();
-      this.event('home_set');
-      return ok({ home: s.home });
     },
 
     'PUT /mode'(body) {

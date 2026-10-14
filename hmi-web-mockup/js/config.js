@@ -9,8 +9,9 @@ window.HMI_CONFIG = {
 
   // true: 브라우저 안의 가짜 서버(mock-server.js)로 동작합니다. 실제 서버가 생기면 false.
   useMock: true,
-  apiBase: 'http://localhost:8000/api',
-  wsUrl: 'ws://localhost:8000/ws',
+  // 서버 주소. XML 서버(서버 담당 규약 v1.0)는 웹소켓 하나만 쓴다: 다른 PC면 localhost를 서버 PC의 IP로
+  wsUrl: 'ws://localhost:5080/ws/hmi',
+  apiBase: 'http://localhost:8000/api', // server.format이 'json'일 때만 씀
 
   // 개발 단계 전용 표시(장치 연결 상태, 임시 원점값 안내). 배포할 때 false.
   // 주소 뒤에 ?dev=0 또는 ?dev=1 을 붙이면 이 값보다 우선합니다.
@@ -27,6 +28,16 @@ window.HMI_CONFIG = {
 
   // ---- 서버 형식 — 서버 담당이 정한 방식에 맞춰 여기만 바꾸면 됩니다 (대응표: docs/server-cases.md) ----
   server: {
+    // 주고받는 글 모양: 'xml'(웹소켓 + XML, 서버 담당 규약 v1.0 — docs/server-xml-v1.0.md · docs/xml-protocol.md)
+    //                   'json'(예전 초안 docs/API.md — 아래 push·commands·paths… 설정은 이때만 씀)
+    format: 'xml',
+    xml: {
+      version: '1.0',        // 보내는 메시지의 version
+      replyTimeoutMs: 5000,  // 이 안에 서버의 답(Reply)이 없으면 "응답 미확인" (실패로 단정하지 않음)
+      statusTimeoutMs: 3000, // 상태(1초마다 옴)가 이 시간 동안 없으면 끊김으로 보고 다시 붙음
+      homePose: true,        // 원점 복귀 때 HMI가 저장한 원점 각도를 함께 보냄. 서버 v1.0은 아직 받지 않음(거절) — false면 이름만
+      // commands: { stop: 'Stop', … } — 서버 명령 이름 바꾸기 (기본값과 요청안 이름: js/xml-protocol.js DEFAULTS)
+    },
     push: 'ws',            // 실시간 메시지를 받는 방식: 'ws' · 'socketio' · 'sse' · 'poll'
     commands: 'http',      // 명령을 보내는 방식: 'http'(REST) · 'ws'(push 연결로)
     timeoutMs: 8000,       // 명령 응답을 기다리는 시간
@@ -65,12 +76,15 @@ window.HMI_CONFIG = {
   const dev = params.get('dev');
   if (dev === '0' || dev === '1') cfg.devMode = dev === '1';
 
-  // 시험할 때 설정 파일을 고치지 않고 서버를 바꿔 끼운다: ?mock=0&api=http://서버:8000/api&ws=ws://서버:8000/ws&push=socketio
+  // 시험할 때 설정 파일을 고치지 않고 서버를 바꿔 끼운다: ?mock=0&ws=ws://서버:5080/ws/hmi
+  //   예전 JSON 서버: ?mock=0&format=json&api=http://서버:8000/api&ws=ws://서버:8000/ws&push=socketio
   const mock = params.get('mock');
   if (mock === '0' || mock === '1') cfg.useMock = mock === '1';
+  if (['xml', 'json'].includes(params.get('format'))) cfg.server.format = params.get('format');
   if (params.get('api')) cfg.apiBase = params.get('api');
   if (params.get('ws')) cfg.wsUrl = params.get('ws');
   if (['ws', 'socketio', 'sse', 'poll'].includes(params.get('push'))) cfg.server.push = params.get('push');
+  if (params.get('homePose') === '0' || params.get('homePose') === '1') cfg.server.xml.homePose = params.get('homePose') === '1';
 
   let saved = null;
   try { saved = localStorage.getItem('hmi.theme'); } catch (e) { /* 저장소가 막힌 브라우저 */ }

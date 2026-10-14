@@ -1,14 +1,16 @@
 // 서버 점검 — 서버가 어떤 형식인지 읽어 보고, HMI가 알아서 맞춘 것과 config.js에서 바꿀 값을 알려 줍니다.
-// 읽기만 합니다: GET /info, GET /status, 실시간 메시지 듣기. 명령(시작·정지 등)은 보내지 않습니다.
+// 읽기만 합니다: XML 서버는 상태 듣기 · GetStatus · Ping, JSON 서버는 GET /info, GET /status, 실시간 메시지 듣기.
+// 명령(시작·정지 등)은 보내지 않습니다.
 (function () {
   const base = window.HMI_CONFIG;
   const T = window.HmiTransport;
   const $ = (id) => document.getElementById(id);
   const el = {
-    api: $('api'), ws: $('ws'), push: $('push'), sse: $('sse'), listen: $('listen'),
+    format: $('format'), api: $('api'), ws: $('ws'), push: $('push'), sse: $('sse'), listen: $('listen'),
     run: $('run'), runMock: $('run-mock'), progress: $('progress'),
     checks: $('checks'), config: $('config-out'), rows: $('msg-rows'), notes: $('notes'),
   };
+  el.format.value = base.server.format === 'json' ? 'json' : 'xml';
   el.api.value = base.apiBase;
   el.ws.value = base.wsUrl;
   el.sse.value = base.server.sseUrl;
@@ -110,6 +112,15 @@
       'error.validation': ['info', '요청 형식 오류(FastAPI 422)를 받았습니다.'],
       'error.message_only': ['info', '오류를 코드 없이 문장으로 보냅니다.'],
       'error.alias': ['info', `알아들은 오류 코드: ${d}`],
+      'xml.invalid': ['bad', `XML을 읽지 못한 메시지가 있습니다 (${d}). 서버 담당에게 그 메시지를 보여 주세요.`],
+      'xml.root': ['bad', `맨 바깥 요소가 Message가 아닌 메시지가 있습니다: ${d} (무시함).`],
+      'xml.version': ['warn', `규약 판이 ${d}입니다. HMI는 1.0 기준으로 읽습니다 — 바뀐 판이면 docs/xml-protocol.md를 맞추세요.`],
+      'xml.type.unknown': ['warn', `모르는 메시지 종류: ${d} (무시함). 필요한 정보면 docs/xml-protocol.md에 맞춰 정하세요.`],
+      'xml.angle.unit': ['warn', `모르는 각도 단위: ${d}. deg로 보내 달라고 하세요.`],
+      'xml.motor.id': ['warn', 'Motor id가 1~6이 아닌 것이 있습니다 (무시함).'],
+      'xml.status.missing': ['bad', 'type="Status"인데 Status 요소가 없습니다.'],
+      'xml.reply.no_id': ['warn', 'id 없는 Reply가 왔습니다. 어느 명령의 답인지 몰라 쓰지 않습니다.'],
+      'xml.reply.result': ['warn', `모르는 Reply result: ${d}. Received 또는 Rejected여야 합니다.`],
     };
     return table[key] || ['info', code];
   }
@@ -129,6 +140,115 @@
 
   async function diagnoseNetwork(url) {
     try { await fetch(url, { mode: 'no-cors' }); return 'cors'; } catch (e) { return 'down'; }
+  }
+
+  // ---------- XML 서버 (서버 담당 규약 v1.0, docs/server-xml-v1.0.md) ----------
+  // 웹소켓 하나로 듣고, GetStatus·Ping만 보낸다 (명령은 보내지 않는다)
+  async function checkXml() {
+    el.run.disabled = true;
+    el.runMock.disabled = true;
+    const url = el.ws.value.trim();
+    const limit = (base.server.xml && base.server.xml.statusTimeoutMs) || 3000;
+    const adapter = window.HmiAdapter.create({ naiveTime: base.server.naiveTime, primaryCamera: 'auto', xml: base.server.xml });
+    const X = window.HmiXml;
+    const results = [];
+    const show = () => list(el.checks, results);
+    el.rows.textContent = '';
+    el.notes.textContent = '';
+    el.config.textContent = '점검 중…';
+    const listenMs = Number(el.listen.value) * 1000;
+    const stat = { types: {}, last: {}, statusAt: [], firstAt: null, withId: 0, replies: {} };
+    const startedAt = Date.now();
+    let ws = null;
+    try {
+      el.progress.textContent = '웹소켓에 연결하는 중…';
+      ws = new WebSocket(url);
+      const opened = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(false), 4000);
+        ws.onopen = () => { clearTimeout(timer); resolve(true); };
+        ws.onerror = () => { clearTimeout(timer); resolve(false); };
+      });
+      if (!opened) {
+        results.push(['bad', `서버에 닿지 않습니다 (${url}). 서버 실행 여부, 주소의 IP·포트(기본 5080)·경로(/ws/hmi), 서버 PC 방화벽(TCP 5080)을 확인하세요. 다른 PC에서 붙으려면 서버를 그 PC의 장비망 IP로 띄워야 합니다(서버 담당 문서 "실행").`]);
+        show();
+        throw new Error('stop');
+      }
+      results.push(['ok', `웹소켓 연결: ${url}`]);
+      ws.onmessage = (e) => {
+        if (typeof e.data !== 'string') { stat.types['(바이너리)'] = (stat.types['(바이너리)'] || 0) + 1; return; }
+        let root = null;
+        try { root = X.parse(e.data); } catch (err) { /* adapter가 기록한다 */ }
+        const kind = root ? X.attr(root, 'type') : '(XML 아님)';
+        const id = root ? X.attr(root, 'id') : undefined;
+        if (kind === 'Status') {
+          if (id) stat.withId += 1;
+          else stat.statusAt.push(Date.now());
+          if (stat.firstAt === null) stat.firstAt = Date.now();
+        }
+        if (id) stat.replies[id] = kind;
+        adapter.message(e.data).forEach((m) => {
+          stat.types[m.type] = (stat.types[m.type] || 0) + 1;
+          stat.last[m.type] = m.data;
+        });
+      };
+      // 조회만: GetStatus · Ping — 같은 id로 답하는지
+      ws.send('<Message version="1.0" type="GetStatus" id="check-status-1" />');
+      ws.send('<Message version="1.0" type="Ping" id="check-ping-1" />');
+      el.progress.textContent = `${listenMs / 1000}초 듣는 중…`;
+      await wait(listenMs);
+      results.push(stat.firstAt !== null && stat.firstAt - startedAt <= 1500 ? ['ok', '연결하고 곧바로 상태를 보냅니다.'] : ['bad', '연결한 뒤 상태(Status)가 오지 않았습니다.']);
+      results.push(stat.replies['check-status-1'] === 'Status' ? ['ok', 'GetStatus에 같은 id의 상태로 답합니다.'] : ['warn', 'GetStatus에 답이 없거나 다른 것으로 답했습니다.']);
+      results.push(stat.replies['check-ping-1'] === 'Pong' ? ['ok', 'Ping에 같은 id의 Pong으로 답합니다.'] : ['warn', 'Ping에 Pong으로 답하지 않았습니다.']);
+      // 자동 상태 간격 → 끊김 판단 시간
+      let gap = null;
+      if (stat.statusAt.length >= 2) {
+        gap = (stat.statusAt[stat.statusAt.length - 1] - stat.statusAt[0]) / (stat.statusAt.length - 1);
+        results.push(gap * 2 < limit ? ['ok', `상태가 약 ${(gap / 1000).toFixed(1)}초마다 옵니다 (끊김 판단 ${limit / 1000}초).`]
+          : ['warn', `상태가 약 ${(gap / 1000).toFixed(1)}초마다 옵니다. 끊김 판단(${limit / 1000}초)이 짧아 끊김을 잘못 띄웁니다 — 아래 statusTimeoutMs를 쓰세요.`]);
+      } else results.push(['warn', '듣는 동안 자동 상태가 두 번 이상 오지 않았습니다. 서버의 상태 전송 간격(PushIntervalMs)을 확인하세요.']);
+      if (stat.withId > 1) results.push(['warn', 'id가 붙은 상태가 여러 번 왔습니다. 자동 전송에는 id를 붙이지 않아야 합니다(규약 v1.0).']);
+      // 상태 내용
+      const st = stat.last.status;
+      if (st) {
+        const dev = Object.entries(st.devices || {}).map(([k, v]) => `${k} ${v === 'connected' ? '연결' : '끊김'}`).join(', ');
+        const running = st.conveyorRunning === null || st.conveyorRunning === undefined ? '모름' : st.conveyorRunning ? '예' : '아니오';
+        const counts = st.stats ? `${st.stats.total}(양품 ${st.stats.good}·불량 ${st.stats.defect})` : '무효(화면에 –)';
+        results.push(['ok', `상태: 데이터 ${st.source || '알려 주지 않음'}, 장치 ${dev || '없음'}, 컨베이어 가동 ${running}, 검사 개수 ${counts}.`]);
+        const joints = stat.last.joints;
+        if (joints) {
+          const n = Object.keys(joints.angles).length;
+          results.push([n ? 'ok' : 'info', `${joints.source === 'leader' ? '리더암' : '로봇팔'} 각도: 6개 중 ${n}개 받음${n ? '' : ' (valid="false" — 화면에 –)'}.`]);
+        }
+        if (!st.line) results.push(['info', '라인 상태·긴급정지·운전 모드가 없습니다(v1.0). 화면은 "상태 미수신"으로 보이고 키를 막지 않으며, 명령의 결과는 서버의 답으로 알립니다. 서버 담당에게 docs/xml-protocol.md 4장의 Line 요소를 요청하세요.']);
+        else results.push(['ok', `라인 상태: ${st.line}, 모드 ${st.mode || '모름'}, 긴급정지 ${st.estop === undefined || st.estop === null ? '모름' : st.estop ? '켜짐' : '꺼짐'} (요청안 Line 요소).`]);
+      }
+      show();
+
+      el.rows.textContent = '';
+      Object.keys(stat.types).sort().forEach((ty) => {
+        const tr = el.rows.insertRow();
+        [ty, String(stat.types[ty]), 'XML', brief(stat.last[ty])].forEach((text, i) => {
+          const td = tr.insertCell();
+          td.textContent = text;
+          if (i === 1) td.className = 'num';
+        });
+      });
+      const notes = adapter.notes();
+      list(el.notes, notes.length ? notes.map((n) => { const [kind, text] = explain(n.code); return [kind, text + (n.count > 1 ? ` (${n.count}번)` : '')]; }) : [['ok', '서버 규약 v1.0 그대로 보냅니다. 맞출 것이 없습니다.']]);
+      const out = ['// js/config.js', 'useMock: false,', `wsUrl: '${url}',`, 'server: {', "  format: 'xml',"];
+      if (gap && gap * 2 >= limit) out.push(`  xml: { statusTimeoutMs: ${Math.ceil((gap * 3) / 1000) * 1000} }, // 상태 간격의 3배`);
+      out.push('},');
+      el.config.textContent = out.join('\n');
+      el.progress.textContent = '점검을 마쳤습니다.';
+    } catch (err) {
+      if (err.message !== 'stop') { results.push(['bad', '점검 중 오류: ' + err.message]); show(); }
+      el.progress.textContent = '점검을 멈췄습니다.';
+      el.config.textContent = '서버에 닿아야 값을 정할 수 있습니다.';
+    } finally {
+      if (ws) { try { ws.close(); } catch (e) { /* 이미 닫힘 */ } }
+      el.run.disabled = false;
+      el.runMock.disabled = false;
+    }
   }
 
   async function check(useMock) {
@@ -356,6 +476,6 @@
     }
   }
 
-  el.run.addEventListener('click', () => check(false));
+  el.run.addEventListener('click', () => (el.format.value === 'xml' ? checkXml() : check(false)));
   el.runMock.addEventListener('click', () => check(true));
 })();

@@ -12,6 +12,24 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["hmi-web-mockup/tests/variant-server.py", "8765"],
       "port": 8765
+    },
+    {
+      "name": "xml-server",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["hmi-web-mockup/tests/xml-server.py", "5080", "--simulation"],
+      "port": 5080
+    },
+    {
+      "name": "xml-server-plain",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["hmi-web-mockup/tests/xml-server.py", "5082"],
+      "port": 5082
+    },
+    {
+      "name": "xml-server-extended",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["hmi-web-mockup/tests/xml-server.py", "5081", "--simulation", "--extended"],
+      "port": 5081
     }
   ]
 }

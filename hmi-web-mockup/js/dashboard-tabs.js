@@ -137,7 +137,16 @@
   }
 
   const armConnected = (arm) => !!S() && online() && S().devices[arm] !== 'disconnected';
-  const liveMotors = (arm) => (armConnected(arm) && store.state.telemetry[arm] && store.state.telemetry[arm].motors) || {};
+  // 서보 상태(telemetry)가 없으면 관절 각도 메시지의 각도만이라도 (XML v1.0: 리더암 각도만 옴)
+  function liveMotors(arm) {
+    if (!armConnected(arm)) return {};
+    const tel = store.state.telemetry[arm];
+    if (tel && tel.motors) return tel.motors;
+    const jn = store.state.joints[arm];
+    const out = {};
+    if (jn && jn.angles) Object.entries(jn.angles).forEach(([j, v]) => { out[j] = { pos: v, posUnit: jn.units && jn.units[j] }; });
+    return out;
+  }
 
   // 팔 전원 전압: 서보 6개 값의 가운데 값 (원래 대시보드와 같다)
   function supplyOf(arm) {
@@ -147,11 +156,7 @@
 
   function phase() {
     if (ctl.exiting) return 'shutdown';
-    if (!store.state.everConnected) return 'connecting';
-    if (!online() || !S()) return 'offline';
-    if (S().estop) return 'estop';
-    if (S().line === 'unknown') return 'unknown';
-    return S().line;
+    return store.linePhase(); // 서버가 라인 상태를 보내지 않으면(XML v1.0) 'unreported'
   }
 
   // 가동 시작 시각: 서버가 알려 주면(started_at) 그것, 아니면 이 화면이 가동을 본 때
@@ -173,6 +178,7 @@
   }
 
   const modeWord = () => t('mode.' + (S() && S().mode === 'manual' ? 'manual' : 'auto'));
+  const modeKnown = () => !!S() && (S().mode === 'auto' || S().mode === 'manual');
 
   // ---------- 서버 메시지 ----------
 
@@ -217,6 +223,10 @@
         break;
       case 'joints':
         if (ui.tab === 'control') renderControlJoints(); // 수동 모드의 리더암 각도
+        else if (ui.tab === data.source && !store.state.telemetry[data.source]) renderPage(); // 서보 상태 없이 각도만 오는 서버
+        break;
+      case 'home': // 이 HMI에 저장한 원점이 바뀜 (이 창 또는 다른 창의 원점 잡기)
+        if (['control', 'system'].includes(ui.tab)) renderPage();
         break;
       case 'metrics':
         renderTally();
@@ -262,11 +272,12 @@
       error = true;
     }
     else if (fault) { detail = store.faultDetail(st.fault); error = true; }
-    else if (p === 'running') detail = t('db.detail.running', { mode: modeWord(), duration: duration() });
+    else if (p === 'running') detail = modeKnown() ? t('db.detail.running', { mode: modeWord(), duration: duration() }) : t('db.detail.running.unknownMode', { duration: duration() });
     else if (p === 'stopped' && store.homeBlock()) detail = t(store.homeBlock() === 'unset' ? 'detail.homeNotSet' : 'detail.homeRequired'); // 자동 시작을 막는 원점 문제
-    else if (p === 'stopped') detail = t('db.detail.stopped', { mode: modeWord() });
+    else if (p === 'stopped') detail = modeKnown() ? t('db.detail.stopped', { mode: modeWord() }) : t('db.detail.stopped.unknownMode');
     else if (p === 'estop') detail = t('db.detail.estop');
     else if (p === 'unknown') detail = t('detail.unknown', { state: st.lineRaw });
+    else if (p === 'unreported') detail = store.unreportedDetail();
     else detail = t('detail.' + p);
     el.detail.textContent = detail;
     if (error) el.detail.dataset.kind = 'error';
@@ -281,11 +292,12 @@
   }
 
   function renderTally() {
-    const st = (S() && S().stats) || { total: 0, good: 0, defect: 0 };
-    el.total.textContent = fmt(st.total);
-    el.good.textContent = fmt(st.good);
-    el.defect.textContent = fmt(st.defect);
-    el.rate.textContent = (st.total ? (st.defect / st.total) * 100 : 0).toFixed(1) + '%';
+    // 서버가 검사 개수를 무효라고 하면(stats: null — XML v1.0 valid="false") 0 대신 '–'
+    const st = S() && S().stats;
+    el.total.textContent = st ? fmt(st.total) : '–';
+    el.good.textContent = st ? fmt(st.good) : '–';
+    el.defect.textContent = st ? fmt(st.defect) : '–';
+    el.rate.textContent = st ? (st.total ? (st.defect / st.total) * 100 : 0).toFixed(1) + '%' : '–';
     // 분당 처리: 최근 60초 동안 받은 판정 수
     const list = store.state.inspections;
     const now = Date.now();
@@ -599,6 +611,8 @@
       if (st.devices.conveyor === 'disconnected') { state = t('devices.disconnected'); level = 'warning'; }
       else if (p === 'estop') { state = t('dbt.flow.halted'); level = 'alarm'; }
       else if (stage) state = active.conveyor ? store.stageName(stage) : t('dbt.flow.halted');
+      // 라인 상태를 모르면(XML v1.0) 서버가 알려 준 컨베이어 가동 여부
+      else if (p === 'unreported') state = typeof st.conveyorRunning === 'boolean' ? t(st.conveyorRunning ? 'state.running' : 'state.stopped') : unknown;
       else state = t(p === 'running' ? 'state.running' : 'state.stopped');
     }
     f(el.st.conveyor, 'state').textContent = state;
@@ -659,7 +673,7 @@
 
     // 판정
     const last = store.state.inspections[0];
-    f(el.st.judge, 'state').textContent = on ? t((stage ? stage === 'inspecting' : p === 'running') ? 'dbt.flow.judging' : 'dbt.flow.idle') : unknown;
+    f(el.st.judge, 'state').textContent = on && p !== 'unreported' ? t((stage ? stage === 'inspecting' : p === 'running') ? 'dbt.flow.judging' : 'dbt.flow.idle') : unknown;
     f(el.st.judge, 'latency').textContent = ui.latency === null ? '–' : Math.round(ui.latency) + 'ms';
     const conf = f(el.st.judge, 'conf');
     conf.textContent = last && last.result
@@ -696,10 +710,10 @@
     supply.textContent = volt === null ? '–' : volt.toFixed(1) + 'V';
     setLevel(supply, supplyLevel(volt, supplyCfg('arm')));
 
-    // 출구
-    const stats = (st && st.stats) || { good: 0, defect: 0 };
-    f(el.st.good, 'n').textContent = fmt(stats.good);
-    f(el.st.defect, 'n').textContent = fmt(stats.defect);
+    // 출구 — 서버가 검사 개수를 무효라고 하면 '–'
+    const stats = st ? st.stats : { good: 0, defect: 0 };
+    f(el.st.good, 'n').textContent = stats ? fmt(stats.good) : '–';
+    f(el.st.defect, 'n').textContent = stats ? fmt(stats.defect) : '–';
   }
 
   function renderRecent(body, empty, limit, withLatency) {
@@ -892,22 +906,34 @@
     const manual = on && st.mode === 'manual';
     const rows = [];
     // state: 'ok' · 'bad'(막힘) · 'unknown'(아직 모름 — 색을 입히지 않는다) · 'skip'(이 모드에서는 필요 없음)
-    const add = (key, label, state, text, fix) => rows.push({ key, label, state, text, fix });
+    // reported: false면 서버가 이 값을 보내지 않는다(XML v1.0) — 기다려도 알 수 없다
+    const add = (key, label, state, text, fix, reported) => rows.push({ key, label, state, text, fix, reported: reported !== false });
     const known = (ok, okText, badText) => (on ? [ok ? 'ok' : 'bad', ok ? okText : badText] : ['unknown', t('dbt.dev.unknown')]);
+    const notReported = (key, label) => add(key, label, 'unknown', t('ctl.cond.notReported'), '', false);
     // 왼쪽 줄: 상태 다섯 가지
     if (online()) add('server', t('ctl.cond.server'), 'ok', t('dbt.devices.connected'), '');
     else if (!store.state.everConnected) add('server', t('ctl.cond.server'), 'unknown', t('state.connecting'), '');
     else add('server', t('ctl.cond.server'), 'bad', t('devices.disconnected'), t('ctl.cond.fixServer'));
-    add('estop', t('ctl.cond.estop'), ...known(on && !st.estop, t('ctl.cond.released'), t('ctl.cond.latched')), t('ctl.cond.fixEstop'));
+    if (on && (st.estop === null || st.estop === undefined)) notReported('estop', t('ctl.cond.estop'));
+    else add('estop', t('ctl.cond.estop'), ...known(on && !st.estop, t('ctl.cond.released'), t('ctl.cond.latched')), t('ctl.cond.fixEstop'));
     // 확인하고 시작하면 풀리는 고장(clear: start)은 시작을 막지 않는다 (docs/API.md 3.1)
     const ackOnStart = on && !!st.fault && st.fault.clear === 'start';
-    add('fault', t('ctl.cond.fault'), ...known(on && (!st.fault || ackOnStart), ackOnStart ? t('ctl.cond.ackOnStart') : t('ctl.cond.none'), t('ctl.cond.some')),
-      on && st.fault ? store.faultDetail(st.fault) : t('ctl.cond.fixFault'));
-    const powerBad = ['arm'].concat(manual ? ['leader'] : []).some((arm) => supplyLevel(supplyOf(arm), supplyCfg(arm)) === 'alarm');
-    add('power', t('ctl.cond.power'), ...known(!powerBad, t('ctl.cond.normal'), t('ctl.cond.abnormal')), t('ctl.cond.fixPower'));
-    // 원점은 자동 모드에만 필요하다: 저장된 원점이 있고, 긴급정지·로봇팔 고장 뒤라면 원점 복귀를 마쳤어야 한다 (v0.4)
+    if (on && st.fault === undefined) notReported('fault', t('ctl.cond.fault'));
+    else {
+      add('fault', t('ctl.cond.fault'), ...known(on && (!st.fault || ackOnStart), ackOnStart ? t('ctl.cond.ackOnStart') : t('ctl.cond.none'), t('ctl.cond.some')),
+        on && st.fault ? store.faultDetail(st.fault) : t('ctl.cond.fixFault'));
+    }
+    // 전원 전압은 서보 상태(telemetry)로 본다. 서버가 서보 상태를 보내지 않으면 모른다
+    const powerArms = ['arm'].concat(manual ? ['leader'] : []);
+    if (on && powerArms.every((arm) => supplyOf(arm) === null)) notReported('power', t('ctl.cond.power'));
+    else {
+      const powerBad = powerArms.some((arm) => supplyLevel(supplyOf(arm), supplyCfg(arm)) === 'alarm');
+      add('power', t('ctl.cond.power'), ...known(!powerBad, t('ctl.cond.normal'), t('ctl.cond.abnormal')), t('ctl.cond.fixPower'));
+    }
+    // 원점은 자동 모드에만 필요하다: 이 HMI에 저장된 원점이 있고, 긴급정지·로봇팔 고장 뒤라면 원점 복귀를 마쳤어야 한다
     if (manual) add('home', t('ctl.cond.home'), 'skip', t('ctl.cond.autoOnly'), '');
-    else if (on && st.home === null) add('home', t('ctl.cond.home'), 'bad', t('ctl.cond.homeNotSet'), t('ctl.cond.fixHomeNotSet'));
+    else if (on && !modeKnown()) notReported('home', t('ctl.cond.home')); // 운전 모드를 모르면 원점이 필요한지 모른다
+    else if (on && !store.state.home) add('home', t('ctl.cond.home'), 'bad', t('ctl.cond.homeNotSet'), t('ctl.cond.fixHomeNotSet'));
     else add('home', t('ctl.cond.home'), ...known(on && !st.homeRequired, t('ctl.cond.homeOk'), t('ctl.cond.homeNeeded')), t('ctl.cond.fixHome'));
     // 오른쪽 줄: 운전 모드에 필요한 장치 (리더암은 수동에서만). 서버가 아직 알려 주지 않은 장치도 '모름'
     const primary = 'camera_' + store.primaryCamera();
@@ -915,6 +941,7 @@
       const name = id === primary ? t('ctl.cond.primaryCam', { camera: store.deviceName(id) }) : store.deviceName(id);
       const fix = t('ctl.cond.fixDevice', { device: store.deviceName(id) });
       if (id === 'leader' && !manual) { add('dev.' + id, name, 'skip', t('ctl.cond.manualOnly'), ''); return; }
+      if (on && api.xml && !(id in (st.devices || {}))) { notReported('dev.' + id, name); return; } // XML v1.0은 컨베이어·로봇팔만 알린다
       if (!on || !(id in (st.devices || {}))) { add('dev.' + id, name, 'unknown', t('dbt.dev.unknown'), fix); return; }
       const ok = st.devices[id] === 'connected';
       add('dev.' + id, name, ok ? 'ok' : 'bad', t(ok ? 'dbt.devices.connected' : 'devices.disconnected'), fix);
@@ -942,23 +969,26 @@
       li.querySelector('.conds__state').textContent = r.text;
     });
     const bad = rows.filter((r) => r.state === 'bad');
-    const unknownCount = rows.filter((r) => r.state === 'unknown').length;
-    el.ctCondMeta.textContent = bad.length ? t('ctl.cond.missing', { n: bad.length }) : unknownCount ? t('ctl.cond.checking') : t('ctl.cond.allOk');
+    const unknownRows = rows.filter((r) => r.state === 'unknown');
+    // 서버가 곧 알려 줄 것을 기다리는 중인지, 서버가 아예 보내지 않는 값인지(XML v1.0)
+    const waiting = unknownRows.some((r) => r.reported);
+    el.ctCondMeta.textContent = bad.length ? t('ctl.cond.missing', { n: bad.length })
+      : unknownRows.length ? (waiting ? t('ctl.cond.checking') : t('ctl.cond.notReportedMeta', { n: unknownRows.length })) : t('ctl.cond.allOk');
     setLevel(el.ctCondMeta, bad.length ? 'warning' : null);
     let sum;
     if (p === 'running') sum = t('ctl.cond.running');
     else if (['starting', 'stopping', 'homing', 'shutdown'].includes(p)) sum = t('ctl.cond.busy');
     else if (bad.length) sum = bad[0].fix;
-    else if (unknownCount) sum = t('ctl.cond.waiting');
+    else if (unknownRows.length) sum = waiting ? t('ctl.cond.waiting') : t('ctl.cond.notReportedSum');
     else sum = t('ctl.cond.ready');
     el.ctCondSum.textContent = sum;
     setLevel(el.ctCondSum, bad.length && !['running'].includes(p) ? 'warning' : null);
   }
 
-  // 저장된 원점(서버)과 로봇팔의 지금 각도 — 원점 복귀가 얼마나 움직일지. 원점은 수동 모드의 원점 잡기로 바뀐다
+  // 저장된 원점(이 HMI)과 로봇팔의 지금 각도 — 원점 복귀가 얼마나 움직일지. 원점은 수동 모드의 원점 잡기로 바뀐다
   function renderHomes() {
     const st = S();
-    const home = st && online() ? st.home : undefined;
+    const home = store.state.home;
     if (!el.ctHomes.firstChild) {
       JOINTS.forEach((j) => {
         const tr = el.ctHomes.insertRow();
@@ -980,17 +1010,16 @@
     });
     let saved;
     if (home) saved = home.setAt ? t('ctl.home.savedAt', { time: store.shortTime(home.setAt) }) : t('ctl.home.saved');
-    else if (home === null) saved = t('home.notSet');
-    else saved = st && online() ? t('ctl.home.unknown') : '';
+    else saved = t('home.notSet');
     el.ctHomeSaved.textContent = saved;
     el.ctHomeSaved.hidden = !!st && st.mode === 'manual'; // 수동 모드에서는 키 아래 안내가 마지막 저장 시각을 함께 쓴다
   }
 
-  // 수동 모드에서만: 리더암 각도 (조작 화면의 운전 모드 아래와 같다)
+  // 수동 모드에서만: 리더암 각도 (조작 화면의 운전 모드 아래와 같다). 운전 모드를 모르면(XML v1.0) 각도가 오는 동안 늘 보인다
   function renderControlJoints() {
-    const manual = !!S() && online() && S().mode === 'manual';
-    el.ctJoints.hidden = !manual;
-    if (!manual) return;
+    const show = !!S() && online() && (S().mode === 'manual' || (!modeKnown() && !!store.state.joints.leader));
+    el.ctJoints.hidden = !show;
+    if (!show) return;
     if (!el.ctJointsList.firstChild) {
       JOINTS.forEach((j) => {
         const box = document.createElement('div');
@@ -1072,16 +1101,18 @@
   function renderControlPage() {
     const p = phase();
     const mode = S() && S().mode === 'manual' ? 'manual' : 'auto';
+    const modeSuffix = modeKnown() ? mode : 'unknownMode';
     // 운전 모드: 고른 모드가 하는 일 / 시작과 정지: 지금 누르면 하는 일 (조작 화면의 상태 설명과 같은 문장)
-    el.ctModeDesc.textContent = t('detail.running.' + mode);
-    el.ctRunHint.textContent = p === 'stopped' || p === 'running' ? t('detail.' + p + '.' + mode) : t('detail.' + (p === 'estop' ? 'estop' : p === 'unknown' ? 'connecting' : p));
+    el.ctModeDesc.textContent = modeKnown() ? t('detail.running.' + mode) : t('ctl.mode.notReported');
+    el.ctRunHint.textContent = p === 'stopped' || p === 'running' ? t('detail.' + p + '.' + modeSuffix) : t('detail.' + (p === 'estop' ? 'estop' : p === 'unknown' ? 'connecting' : p));
     renderControlJoints();
     renderConditions(p);
     renderHomes();
     renderControlCams();
     // 긴급정지: 걸렸는지와 해제한 뒤 어떻게 되는지 (D-004)
     const latched = p === 'estop';
-    el.ctEstopState.textContent = latched ? t('estop.latched') : p === 'offline' || p === 'connecting' ? t('dbt.dev.unknown') : t('ctl.estop.clear');
+    const estopUnreported = !!S() && (S().estop === null || S().estop === undefined); // XML v1.0은 긴급정지 여부를 보내지 않는다
+    el.ctEstopState.textContent = latched ? t('estop.latched') : p === 'offline' || p === 'connecting' ? t('dbt.dev.unknown') : estopUnreported ? t('ctl.cond.notReported') : t('ctl.estop.clear');
     setLevel(el.ctEstopState, latched ? 'alarm' : null);
     if (p === 'offline') {
       el.ctEstopHint.textContent = t(robot.hardwareStop === 'button' ? 'estop.offline.button' : 'estop.offline.dc');
@@ -1167,15 +1198,16 @@
   }
 
   function renderRatio() {
+    const valid = !!S() && S().stats !== null; // 서버가 검사 개수를 무효라고 하면 '–'
     const st = (S() && S().stats) || { total: 0, good: 0, defect: 0 };
     const g = st.total ? (st.good / st.total) * 100 : 0;
     const dfx = st.total ? 100 - g : 0;
     el.ratioBar.children[0].style.flex = '0 0 ' + g + '%';
     el.ratioBar.children[1].style.flex = '0 0 ' + dfx + '%';
     el.ratioBar.children[1].hidden = !st.defect;
-    el.prGood.textContent = fmt(st.good);
-    el.prDefect.textContent = fmt(st.defect);
-    el.prRateValue.textContent = (st.total ? (st.defect / st.total) * 100 : 0).toFixed(1) + '%';
+    el.prGood.textContent = valid ? fmt(st.good) : '–';
+    el.prDefect.textContent = valid ? fmt(st.defect) : '–';
+    el.prRateValue.textContent = valid ? (st.total ? (st.defect / st.total) * 100 : 0).toFixed(1) + '%' : '–';
     el.prRuntime.textContent = ui.runSince ? duration() : '–';
     const data = minuteData(ui.range).filter((m) => m.good + m.defect > 0);
     if (!data.length) {
@@ -1760,24 +1792,43 @@
     return t('dbt.sys.historyUnknown');
   }
 
+  // 서버가 알려 준 화면 값의 출처 (XML 규약 Status/@source)
+  function sourceText() {
+    const src = S() && S().source;
+    if (src === undefined || src === null) return null;
+    const key = 'dbt.sys.source.' + src;
+    return t(key) === key ? src : t(key);
+  }
+
   function renderSystem() {
     const push = cfg.server.push;
     const pushLabel = PUSH[push] && PUSH[push].startsWith('dbt.') ? t(PUSH[push]) : PUSH[push] || push;
     const pushUrl = push === 'sse' ? cfg.server.sseUrl : push === 'poll' ? cfg.apiBase : cfg.wsUrl;
+    const timeoutMs = api.xml ? (cfg.server.xml && cfg.server.xml.statusTimeoutMs) || 3000 : cfg.heartbeatTimeoutMs;
+    // XML 서버(D-002): 웹소켓 하나로 상태를 받고 명령을 보낸다 — 명령 주소·실시간 방식 대신 형식과 주소
+    const wire = api.xml
+      ? [
+        [t('dbt.sys.format'), t('dbt.sys.formatXml', { version: (cfg.server.xml && cfg.server.xml.version) || '1.0' })],
+        [t('dbt.sys.address'), cfg.wsUrl],
+        [t('dbt.sys.source'), sourceText()],
+      ]
+      : [
+        [t('dbt.sys.api'), cfg.useMock ? t('dbt.sys.unused') : cfg.apiBase],
+        [t('dbt.sys.push'), cfg.useMock ? t('dbt.sys.unused') : pushLabel + ', ' + pushUrl],
+        [t('dbt.sys.commands'), cfg.useMock ? t('dbt.sys.unused') : t(cfg.server.commands === 'ws' ? 'dbt.sys.cmdWs' : 'dbt.sys.cmdHttp')],
+      ];
     facts($('sy-conn'), [
       [t('dbt.sys.server'), t(cfg.useMock ? 'dbt.dev.mockServer' : 'dbt.sys.realServer')],
       [t('dbt.sys.state'), t(online() ? 'dbt.devices.connected' : 'devices.disconnected'), online() ? null : 'note'],
-      [t('dbt.sys.api'), cfg.useMock ? t('dbt.sys.unused') : cfg.apiBase],
-      [t('dbt.sys.push'), cfg.useMock ? t('dbt.sys.unused') : pushLabel + ', ' + pushUrl],
-      [t('dbt.sys.commands'), cfg.useMock ? t('dbt.sys.unused') : t(cfg.server.commands === 'ws' ? 'dbt.sys.cmdWs' : 'dbt.sys.cmdHttp')],
+    ].concat(wire, [
       [t('dbt.sys.lastMessage'), store.state.lastMessageAt ? clock(store.state.lastMessageAt, true) : null],
-      [t('dbt.sys.timeout'), t('dbt.sys.timeoutValue', { s: cfg.heartbeatTimeoutMs / 1000 })],
+      [t('dbt.sys.timeout'), t('dbt.sys.timeoutValue', { s: timeoutMs / 1000 })],
       [t('dbt.sys.history'), historyText()],
-    ]);
+    ]));
 
     const info = store.state.info;
     if (!info) {
-      facts($('sy-info'), [[t('dbt.sys.info'), t('dbt.sys.noInfo')]]);
+      facts($('sy-info'), [[t('dbt.sys.info'), t(api.xml ? 'dbt.sys.noInfoXml' : 'dbt.sys.noInfo')]]);
     } else {
       const server = info.server || {};
       facts($('sy-info'), [
@@ -1813,13 +1864,14 @@
       [t('dbt.sys.supplyLeader'), sl ? sl.warnLow + '–' + sl.warnHigh + 'V' : null],
     ]);
 
-    // 원점은 서버가 저장한다 (수동 모드의 원점 잡기로 바뀐다)
-    const home = S() ? S().home : undefined;
+    // 원점은 이 HMI(브라우저)에 저장한다 (수동 모드의 원점 잡기로 바뀐다, home.js)
+    const home = store.state.home;
     const homeRows = [];
     if (home) {
       JOINTS.forEach((j) => homeRows.push([store.jointName(j), num(home.angles[j]) ? home.angles[j].toFixed(1) + (home.units[j] === 'pct' ? '%' : '°') : null]));
       homeRows.push([t('dbt.sys.homeSaved'), home.setAt ? store.shortTime(home.setAt) : t('dbt.sys.homeSavedUnknown')]);
-    } else homeRows.push([t('ctl.home.title'), t(home === null ? 'dbt.sys.noHome' : 'dbt.sys.homeUnknown'), 'note']);
+      homeRows.push([t('dbt.sys.homeFrom'), t('arm.' + home.source)]);
+    } else homeRows.push([t('ctl.home.title'), t('dbt.sys.noHome'), 'note']);
     facts($('sy-home'), homeRows);
 
     const themeSet = document.documentElement.dataset.theme;
@@ -1838,7 +1890,7 @@
     if (S() && S().estop) return;
     // 긴급정지는 다른 요청을 기다리지 않고 바로 보낸다 (조작 화면과 같다)
     api.estop()
-      .then(() => { ui.estopError = null; renderBanner(); })
+      .then((res) => { const note = store.resultNote('estop', res); ui.estopError = note ? note.text : null; renderBanner(); })
       .catch((err) => { ui.estopError = store.errorText(err); renderBanner(); });
   });
 

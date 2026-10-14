@@ -268,20 +268,11 @@ test('v0.3 상태: 공정 단계·원점 필요·고장이 풀리는 방법', ()
   assert.equal(a.status({ fault: { code: 'X', clear: 'whenever' } }).fault.clear, 'auto');
 });
 
-test('v0.4 저장된 원점: 기준 모양, 다른 이름·단위, 아직 없음, 모르는 모양', () => {
+test('원점: 원점은 HMI가 저장하므로 서버가 보낸 원점(v0.4 home)은 상태에 넣지 않는다', () => {
   const a = make();
-  const st = a.status({ line: 'stopped', home: { angles: { shoulder_pan: 10, shoulder_lift: -20, elbow_flex: 30, wrist_flex: 40, wrist_roll: 0, gripper: 25 }, unit: 'deg', set_at: '2026-10-13T14:00:00+09:00' } });
-  assert.deepEqual(st.home.angles, { shoulder_pan: 10, shoulder_lift: -20, elbow_flex: 30, wrist_flex: 40, wrist_roll: 0, gripper: 25 });
-  assert.equal(st.home.units.gripper, 'pct');
-  assert.equal(st.home.setAt, '2026-10-13T05:00:00.000Z');
-  // LeRobot 평평한 .pos 이름 · 라디안 · 다른 필드 이름
-  const rad = a.status({ origin: { positions: { 'shoulder_pan.pos': Math.PI / 2 }, unit: 'rad', saved_at: 1791900000 } }).home;
-  assert.equal(rad.angles.shoulder_pan, 90);
-  assert.ok(rad.setAt);
-  assert.equal(a.status({ home: null }).home, null);
-  assert.equal('home' in a.status({ line: 'stopped' }), false); // 서버가 알려 주지 않음 = 모름
-  assert.equal('home' in a.status({ home: true }), false); // 모르는 모양은 넣지 않는다
-  assert.equal(a.status({ needs_home: true, home: null }).homeRequired, true);
+  const st = a.status({ line: 'stopped', home: { angles: { shoulder_pan: 10 }, unit: 'deg' }, needs_home: true });
+  assert.equal('home' in st, false);
+  assert.equal(st.homeRequired, true);
   assert.equal(a.event({ code: 'HOME_SAVED' }).code, 'home_set');
   assert.equal(a.error(409, { error: { code: 'NO_HOME' } }).code, 'HOME_NOT_SET');
   assert.equal(a.error(409, { error: { code: 'MODE_AUTO' } }).code, 'NOT_MANUAL');

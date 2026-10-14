@@ -3,8 +3,8 @@
 // 단추 자리는 화면마다 달라 data-ctl 속성으로 찾습니다 (한 기능의 단추가 여러 자리에 있어도 된다):
 //   data-ctl="run"         시작/정지 (가동 중이면 정지). data-slot="banner"면 긴급정지 중에는 숨고 그 자리를 해제 단추가 쓴다
 //   data-ctl="release"     긴급정지 해제 (확인 창). 긴급정지 중에만 보인다
-//   data-ctl="home"        원점 복귀 — 서버가 저장한 원점으로 옮긴다 (자동 모드·정지 상태)
-//   data-ctl="set-home"    원점 잡기 — 로봇팔의 지금 자세를 원점으로 저장한다 (수동 모드, 확인 창)
+//   data-ctl="home"        원점 복귀 — 이 HMI에 저장한 원점으로 옮긴다 (자동 모드·정지 상태)
+//   data-ctl="set-home"    원점 잡기 — 로봇팔의 지금 자세를 이 HMI에 원점으로 저장한다 (수동 모드, 확인 창)
 //   data-ctl="mode"        운전 모드. data-mode="auto" | "manual"
 //   data-ctl="camera-on" · "camera-off"  카메라 켜기/끄기. data-camera로 id를 주면 그 카메라만, 없으면 모든 카메라
 //   data-ctl="exit"        프로그램 종료 (확인 창 → 종료 화면)
@@ -27,12 +27,9 @@
 
   function phase() {
     if (ui.exiting) return 'shutdown';
-    if (!store.state.everConnected) return 'connecting';
-    if (!online() || !S()) return 'offline';
-    if (S().estop) return 'estop';
-    if (S().line === 'unknown') return 'unknown';
-    return S().line;
+    return store.linePhase();
   }
+  const modeKnown = () => !!S() && (S().mode === 'auto' || S().mode === 'manual');
 
   function streamingOf(id) {
     const st = S();
@@ -50,8 +47,10 @@
     const unset = block === 'unset';
     if (key === 'run' && block) return { text: t(short ? (unset ? 'ctl.homeNotSet.short' : 'ctl.homeFirst.short') : (unset ? 'run.homeNotSet' : 'run.homeFirst')) };
     if (key === 'home' && block) return { text: t(short ? (unset ? 'ctl.homeNotSet.short' : 'ctl.homeNeeded.short') : (unset ? 'home.notSet' : 'home.needed')) };
-    // 수동 모드: 원점 잡기 쓰는 법과 마지막으로 저장한 때 (좁은 자리에는 쓰지 않는다)
-    if (key === 'set-home' && !short && (p === 'stopped' || p === 'running') && S() && S().mode === 'manual') return { text: store.homeSetHint() };
+    // 수동 모드(운전 모드를 모르면 그때도): 원점 잡기 쓰는 법과 마지막으로 저장한 때 (좁은 자리에는 쓰지 않는다)
+    if (key === 'set-home' && !short && ['stopped', 'running', 'unreported'].includes(p) && S() && S().mode !== 'auto') {
+      return { text: store.state.home || S().mode === 'manual' ? store.homeSetHint() : t('home.notSet.short') };
+    }
     return null;
   }
 
@@ -66,7 +65,8 @@
     const p = phase();
     const st = S();
     const latched = p === 'estop';
-    const stopped = p === 'stopped';
+    // 서버가 라인 상태를 보내지 않으면(XML v1.0) 정지 상태처럼 키를 열어 둔다 — 할 수 있는지는 서버의 답으로 알린다
+    const stopped = p === 'stopped' || p === 'unreported';
     const running = p === 'running';
 
     // 시작 / 정지 — 하나의 키가 지금 할 수 있는 동작을 보여 준다
@@ -80,15 +80,16 @@
     });
     all('[data-ctl="release"]').forEach((b) => { b.hidden = !latched; b.disabled = ui.busy.has('release'); });
     // 원점 — 복귀는 자동 모드·정지 상태(저장된 원점이 있을 때), 잡기는 수동 모드(정지·가동 중). 긴급정지 중에는 둘 다 잠긴다.
-    // 모드 때문에 못 누르는 키는 마우스를 올리면 이유가 보인다
+    // 모드 때문에 못 누르는 키는 마우스를 올리면 이유가 보인다. 운전 모드를 모르면(XML v1.0) 모드로는 막지 않는다
     const manual = !!st && st.mode === 'manual';
+    const auto = modeKnown() && !manual;
     all('[data-ctl="home"]').forEach((b) => {
-      b.disabled = !stopped || manual || st.home === null || ui.busy.has('home');
+      b.disabled = !stopped || manual || !store.state.home || ui.busy.has('home');
       b.title = manual ? t('home.go.autoOnly') : '';
     });
     all('[data-ctl="set-home"]').forEach((b) => {
-      b.disabled = !(stopped || running) || !manual || ui.busy.has('set-home');
-      b.title = st && !manual ? t('home.set.manualOnly') : '';
+      b.disabled = !(stopped || running) || auto || ui.busy.has('set-home');
+      b.title = auto ? t('home.set.manualOnly') : '';
     });
     // 운전 모드 — 정지 상태에서만
     all('[data-ctl="mode"]').forEach((b) => {
@@ -143,7 +144,7 @@
   store.subscribe((kind) => {
     if (kind === 'shutdown_complete') { finishExit(); return; }
     if (kind === 'history') { renderHistoryNotes(); return; }
-    if (!['status', 'online', 'info'].includes(kind)) return;
+    if (!['status', 'online', 'info', 'home'].includes(kind)) return;
     clearSolvedNotes();
     // 라인 상태가 바뀌면 지난 실패 안내는 지운다 (예: 시작 실패 → 장치 연결 → 가동)
     const p = phase();
@@ -154,7 +155,8 @@
 
   // ---------- 명령 ----------
 
-  // 같은 명령은 응답이 올 때까지 한 번만. 실패하면 그 자리(data-note)와 윗판에 이유와 다음 행동을 쓴다
+  // 같은 명령은 응답이 올 때까지 한 번만. 실패하면 그 자리(data-note)와 윗판에 이유와 다음 행동을 쓴다.
+  // 서버가 받기만 하고 장비는 움직이지 않았다는 답(XML v1.0)도 그 자리에 쓴다
   async function act(key, command) {
     if (ui.busy.has(key)) return;
     ui.busy.add(key);
@@ -162,7 +164,8 @@
     if (ui.lastError === key) ui.lastError = null;
     render();
     try {
-      await command();
+      const note = store.resultNote(key, await command());
+      if (note) ui.notes[key] = note;
     } catch (err) {
       ui.notes[key] = { text: store.errorText(err), kind: 'error', missing: err.details && err.details.missing };
       ui.lastError = key;
@@ -214,18 +217,18 @@
     const kind = b.dataset.ctl;
     if (kind === 'run') {
       const running = S() && S().line === 'running';
-      act('run', () => (running ? api.stop() : api.start()));
+      act('run', () => (running ? api.stop() : store.startLine()));
     } else if (kind === 'release') {
       if (!(await confirmDialog('release'))) return;
       await act('release', () => api.releaseEstop());
       const estop = $('btn-estop');
       if (estop) estop.focus();
     } else if (kind === 'home') {
-      act('home', () => api.home());
+      act('home', () => store.goHome());
     } else if (kind === 'set-home') {
       // 저장된 원점을 덮어쓴다 — 확인 창을 거친다
       if (!(await confirmDialog('setHome'))) return;
-      act('set-home', () => api.setHome());
+      act('set-home', () => store.saveHome());
     } else if (kind === 'mode') {
       if (!S() || S().mode === b.dataset.mode) return;
       act('mode', () => api.setMode(b.dataset.mode));

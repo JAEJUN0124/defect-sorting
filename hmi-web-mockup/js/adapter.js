@@ -134,6 +134,7 @@
       primaryCamera: 'auto',  // 주 카메라 id. 'auto'면 서버 정보의 첫 카메라, 그것도 없으면 'main'(카메라 한 대인 v0.1 서버)
       bboxFormat: 'xywh',     // 'xywh'(왼쪽 위 + 크기) | 'xyxy'(두 모서리) | 'cxcywh'(가운데 + 크기, YOLO)
       loadUnit: 'auto',       // 서보 부하: 'pct'(%) | 'permille'(서보 원시값, 0.1%) | 'auto'(100을 넘는 값을 한 번 보면 그 뒤로 원시값)
+      xml: null,              // XML 규약 설정 (config.js server.xml) — XML 메시지를 받을 때만 쓴다
     }, options);
     let info = null;
     let loadPermille = opt.loadUnit === 'permille';
@@ -330,7 +331,10 @@
         if (!code) return null;
         const params = val(raw, ['params', 'details', 'detail', 'data', 'args']);
         const message = val(raw, ['message', 'msg', 'text', 'description']);
-        const out = { code: codeOf(code), params: isObj(params) ? params : {} };
+        const out = { code: codeOf(code), params: isObj(params) ? Object.assign({}, params) : {} };
+        // 팔·관절 이름은 이벤트와 같게 맞춘다 (RobotArm → arm, 모터 번호 3 → elbow_flex)
+        if (out.params.arm !== undefined) out.params.arm = armId(out.params.arm);
+        if (out.params.joint !== undefined) out.params.joint = jointId(out.params.joint) || out.params.joint;
         if (typeof message === 'string') out.message = message;
         // 풀리는 방법(v0.3). 없거나 모르는 값이면 auto(원인이 사라지면 풀림)
         const clear = val(raw, ['clear', 'clearby', 'clearedby', 'recovery', 'release', 'reset']);
@@ -353,20 +357,6 @@
         part: part === undefined ? null : part,
         step: typeof step === 'string' && step ? step : null,
       };
-    }
-
-    // 저장된 원점(v0.4): { angles, units, unit, setAt } 또는 null(아직 저장하지 않음). 모르는 모양이면 undefined(상태에 넣지 않음)
-    // 원점은 서버가 가진다 — 수동 모드에서 "원점 잡기"를 누르면 로봇팔의 지금 자세를 저장한다
-    function homePose(raw) {
-      if (raw === null || raw === false || raw === '') return null;
-      if (!isObj(raw) && !Array.isArray(raw)) { note('home.unknown'); return undefined; }
-      const unit = jointUnit(isObj(raw) ? val(raw, ['unit', 'units', 'angleunit']) : null);
-      let body = isObj(raw) ? val(raw, ['angles', 'positions', 'joints', 'pose', 'values', 'qpos'], 'angles') : raw;
-      if (body === undefined) { body = raw; note('home.flat'); }
-      const out = angleMap(body, unit, 'arm');
-      if (!Object.keys(out.angles).length) return null;
-      const at = isObj(raw) ? val(raw, ['setat', 'savedat', 'updatedat', 'at', 'time', 'timestamp'], 'set_at') : undefined;
-      return { angles: out.angles, units: out.units, unit, setAt: time(at) };
     }
 
     // 상태는 바뀐 부분만 와도 된다. 온 필드만 돌려주고, 합치는 일은 store.js가 한다
@@ -417,8 +407,6 @@
       if (started) out.startedAt = time(started.value);
       const homeReq = pick(raw, ['homerequired', 'needshome', 'homingrequired', 'homeneeded', 'requireshome', 'musthome'], 'home_required');
       if (homeReq) { const b = bool(homeReq.value); if (b !== null) out.homeRequired = b; }
-      const home = pick(raw, ['home', 'homepose', 'homeposition', 'homeangles', 'savedhome', 'origin', 'originpose'], 'home');
-      if (home) { const h = homePose(home.value); if (h !== undefined) out.home = h; }
       const cyc = pick(raw, ['cycle', 'process', 'cyclestate', 'processstage', 'stage'], 'cycle');
       if (cyc) out.cycle = cycle(cyc.value);
       return out;
@@ -878,10 +866,18 @@
         default: return isObj(data) ? data : {};
       }
     }
+    // 서버 XML 규약(docs/server-xml-v1.0.md) 메시지: xml-protocol.js가 읽고, 상태·이벤트·판정은 여기 규칙으로 맞춘다
+    function xmlMessage(text) {
+      const P = root.HmiXmlProtocol;
+      if (!P || !root.HmiXml) { note('envelope.xml_unsupported'); return []; }
+      return P.decode(text, { note, status, event, inspection, time }, opt.xml);
+    }
+
     // 메시지 하나를 [{ type, data }] 목록으로 바꾼다. 알 수 없는 것은 빈 목록
     function message(raw) {
       let m = raw;
       if (typeof m === 'string') {
+        if (/^\s*</.test(m)) return xmlMessage(m.replace(/^﻿/, ''));
         try { m = JSON.parse(m); } catch (e) { note('envelope.not_json'); return []; }
       }
       if (Array.isArray(m)) {

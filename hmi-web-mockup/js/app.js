@@ -58,6 +58,7 @@
         render();
         break;
       case 'info':
+      case 'home':
         render();
         break;
       case 'inspection':
@@ -84,16 +85,14 @@
 
   // ---------- 그리기 ----------
 
+  // connecting · offline · estop · unknown · unreported(서버가 라인 상태를 보내지 않음) · stopped · starting · running · stopping · homing
   function phase() {
     if (ui.exiting) return 'shutdown';
-    if (!store.state.everConnected) return 'connecting';
-    if (!online() || !S()) return 'offline';
-    if (S().estop) return 'estop';
-    if (S().line === 'unknown') return 'unknown';
-    return S().line; // stopped · starting · running · stopping · homing
+    return store.linePhase();
   }
 
   const modeKey = () => (S() && S().mode === 'manual' ? 'manual' : 'auto');
+  const modeKnown = () => !!S() && (S().mode === 'auto' || S().mode === 'manual');
 
   function render() {
     const p = phase();
@@ -112,8 +111,10 @@
     const homeBlock = p === 'stopped' ? store.homeBlock() : null; // 자동 시작을 막는 원점 문제 (수동 모드에서는 없음)
     if (fault) el.stateDetail.textContent = store.faultDetail(S().fault);
     else if (homeBlock) el.stateDetail.textContent = t(homeBlock === 'unset' ? 'detail.homeNotSet' : 'detail.homeRequired');
-    else if (p === 'stopped' || p === 'running') el.stateDetail.textContent = t('detail.' + p + '.' + modeKey());
+    else if ((p === 'stopped' || p === 'running') && modeKnown()) el.stateDetail.textContent = t('detail.' + p + '.' + modeKey());
     else if (p === 'unknown') el.stateDetail.textContent = t('detail.unknown', { state: S().lineRaw });
+    else if (p === 'unreported') el.stateDetail.textContent = store.unreportedDetail();
+    else if (p === 'stopped' || p === 'running') el.stateDetail.textContent = t('detail.' + p + '.unknownMode');
     else el.stateDetail.textContent = t('detail.' + p);
     // 고장으로 멈춘 정지는 노랑(IEC 60073: 이상 상태)
     el.stateLamp.dataset.color = fault ? 'amber' : LAMP[p] || 'off';
@@ -123,7 +124,8 @@
   function renderControls(p) {
     const ready = !['connecting', 'offline', 'shutdown'].includes(p);
     const latched = p === 'estop';
-    const stopped = p === 'stopped';
+    // 서버가 라인 상태를 보내지 않으면(XML v1.0) 정지 상태처럼 키를 열어 둔다 — 할 수 있는지는 서버의 답으로 알린다
+    const stopped = p === 'stopped' || p === 'unreported';
     const running = p === 'running';
 
     // 긴급정지 — 서버와 이어져 있으면 언제나 누를 수 있다
@@ -145,15 +147,18 @@
     setNote(el.runNote, ui.notes.run || runHint);
 
     // 원점 — 복귀는 자동 모드·정지 상태(저장된 원점이 있을 때), 잡기는 수동 모드(정지·가동 중 — 리더암으로 자세를 잡는 동안).
-    // 긴급정지 중(팔에 힘이 빠짐)에는 둘 다 잠긴다. 모드 때문에 못 누르는 키는 마우스를 올리면 이유가 보인다
+    // 긴급정지 중(팔에 힘이 빠짐)에는 둘 다 잠긴다. 모드 때문에 못 누르는 키는 마우스를 올리면 이유가 보인다.
+    // 운전 모드를 모르면(XML v1.0) 모드로는 막지 않는다. 원점은 이 HMI에 저장한다 (store.js)
     const manual = modeKey() === 'manual';
-    el.home.disabled = !stopped || manual || S().home === null || ui.busy.has('home');
+    const auto = modeKnown() && !manual;
+    const home = store.state.home;
+    el.home.disabled = !stopped || manual || !home || ui.busy.has('home');
     el.home.title = manual ? t('home.go.autoOnly') : '';
-    el.setHome.disabled = !(stopped || running) || !manual || ui.busy.has('setHome');
-    el.setHome.title = manual ? '' : t('home.set.manualOnly');
+    el.setHome.disabled = !(stopped || running) || auto || ui.busy.has('setHome');
+    el.setHome.title = auto ? t('home.set.manualOnly') : '';
     let homeHint = null;
     if (homeBlock) homeHint = { text: t(homeBlock === 'unset' ? 'home.notSet' : 'home.needed') };
-    else if (manual && (stopped || running)) homeHint = { text: store.homeSetHint() };
+    else if (!auto && (stopped || running)) homeHint = { text: home || manual ? store.homeSetHint() : t('home.notSet.short') };
     setNote(el.homeNote, ui.notes.setHome || ui.notes.home || homeHint);
 
     // 운전 모드 — 정지 상태에서만
@@ -182,19 +187,21 @@
     camera.set(streaming ? src : null);
   }
 
+  // 서버가 검사 개수를 무효라고 하면(stats: null — XML v1.0 valid="false") 0 대신 '–'
   function renderStats() {
-    const st = (S() && S().stats) || { total: 0, good: 0, defect: 0 };
-    el.total.textContent = st.total.toLocaleString();
-    el.good.textContent = st.good.toLocaleString();
-    el.defect.textContent = st.defect.toLocaleString();
-    el.rate.textContent = (st.total ? (st.defect / st.total) * 100 : 0).toFixed(1) + '%';
+    const st = S() && S().stats;
+    el.total.textContent = st ? st.total.toLocaleString() : '–';
+    el.good.textContent = st ? st.good.toLocaleString() : '–';
+    el.defect.textContent = st ? st.defect.toLocaleString() : '–';
+    el.rate.textContent = st ? (st.total ? (st.defect / st.total) * 100 : 0).toFixed(1) + '%' : '–';
   }
 
+  // 리더암 각도: 수동 모드에서. 운전 모드를 모르면(XML v1.0) 서버가 각도를 보내는 동안 늘 보인다
   function renderJoints() {
-    const show = !!S() && online() && S().mode === 'manual';
+    const leader = store.state.joints.leader;
+    const show = !!S() && online() && (S().mode === 'manual' || (!modeKnown() && !!leader));
     el.joints.hidden = !show;
     if (!show) return;
-    const leader = store.state.joints.leader;
     JOINTS.forEach((j) => {
       const v = leader && leader.angles ? leader.angles[j] : undefined;
       const unit = leader && leader.units && leader.units[j] === 'pct' ? '%' : '°';
@@ -321,13 +328,15 @@
   // ---------- 명령 ----------
 
   // 같은 명령은 응답이 올 때까지 한 번만. 실패하면 그 버튼 아래에 이유와 다음 행동을 쓴다.
+  // 서버가 받기만 하고 장비는 움직이지 않았다는 답(XML v1.0)도 그 자리에 쓴다
   async function act(key, command) {
     if (ui.busy.has(key)) return;
     ui.busy.add(key);
     delete ui.notes[key];
     render();
     try {
-      await command();
+      const note = store.resultNote(key, await command());
+      if (note) ui.notes[key] = note;
     } catch (err) {
       ui.notes[key] = { text: errorText(err), kind: 'error', missing: err.details && err.details.missing };
     } finally {
@@ -365,9 +374,14 @@
 
   el.estop.addEventListener('click', () => {
     if (S() && S().estop) return;
-    // 긴급정지는 다른 요청을 기다리지 않고 바로 보낸다
+    // 긴급정지는 다른 요청을 기다리지 않고 바로 보낸다. 서버가 받기만 하고 장비를 멈추지 않았으면(XML v1.0) 그렇게 알린다
     api.estop()
-      .then(() => { delete ui.notes.estop; render(); })
+      .then((res) => {
+        const note = store.resultNote('estop', res);
+        if (note) ui.notes.estop = note;
+        else delete ui.notes.estop;
+        render();
+      })
       .catch((err) => { ui.notes.estop = { text: errorText(err), kind: 'error' }; render(); });
   });
 
@@ -380,14 +394,15 @@
 
   el.run.addEventListener('click', () => {
     const running = S() && S().line === 'running';
-    act('run', () => (running ? api.stop() : api.start()));
+    act('run', () => (running ? api.stop() : store.startLine()));
   });
 
-  el.home.addEventListener('click', () => act('home', () => api.home()));
+  // 원점 복귀: 이 HMI에 저장한 원점 각도를 서버에 보낸다
+  el.home.addEventListener('click', () => act('home', () => store.goHome()));
 
   // 원점 잡기는 저장된 원점을 덮어쓴다 — 확인 창을 거친다. 저장한 때는 키 아래 안내에 보인다
   el.setHome.addEventListener('click', async () => {
-    if (await confirmDialog('setHome')) await act('setHome', () => api.setHome());
+    if (await confirmDialog('setHome')) await act('setHome', () => store.saveHome());
   });
 
   el.modeKeys.forEach((key) => key.addEventListener('click', () => {

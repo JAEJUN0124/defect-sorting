@@ -14,8 +14,7 @@
     stop: ['POST', '/line/stop'],
     estop: ['POST', '/estop'],
     release: ['POST', '/estop/release'],
-    home: ['POST', '/robot/home'],
-    setHome: ['POST', '/robot/home/set'],
+    home: ['POST', '/robot/home'], // 원점 복귀 — 본문에 HMI가 저장한 원점 각도 (원점 잡기는 HMI 안에서 끝나 서버 명령이 없다)
     mode: ['PUT', '/mode'],
     cameraStart: ['POST', '/camera/start'],
     cameraStop: ['POST', '/camera/stop'],
@@ -101,8 +100,9 @@
       ws.onopen = () => {
         retry = 0;
         opened = true;
-        // 서버가 "HMI가 살아 있는지" 알아야 할 때만 보낸다 (기본 0 = 보내지 않음)
-        if (server.clientPingMs > 0) pingTimer = setInterval(() => { try { send({ type: 'ping', data: { at: new Date().toISOString() } }); } catch (e) { /* 끊김은 onclose가 처리 */ } }, server.clientPingMs);
+        // 서버가 "HMI가 살아 있는지" 알아야 할 때만 보낸다 (기본 0 = 보내지 않음). XML 규약이면 handlers.ping이 Ping 메시지를 만든다
+        const ping = handlers.ping || (() => ({ type: 'ping', data: { at: new Date().toISOString() } }));
+        if (server.clientPingMs > 0) pingTimer = setInterval(() => { try { send(ping()); } catch (e) { /* 끊김은 onclose가 처리 */ } }, server.clientPingMs);
         handlers.onOpen();
       };
       ws.onmessage = (e) => {
@@ -121,6 +121,8 @@
     return {
       kind: 'ws',
       send,
+      // 연결은 열려 있는데 서버 메시지가 끊겼을 때: 닫고 다시 붙는다 (onclose가 다시 붙기를 예약한다)
+      reconnect() { if (ws && ws.readyState <= 1) ws.close(); },
       close() { closed = true; clearInterval(pingTimer); if (ws) ws.close(); },
     };
   }

@@ -76,6 +76,9 @@
       case 'telemetry':
         renderArm(data.arm);
         break;
+      case 'joints': // 서보 상태(telemetry)를 안 보내는 서버(XML v1.0)는 관절 각도만 온다
+        if (!store.state.telemetry[data.source]) renderArm(data.source);
+        break;
       case 'metrics':
         renderTally();
         renderCamFps();
@@ -90,11 +93,7 @@
 
   function phase() {
     if (ctl.exiting) return 'shutdown';
-    if (!store.state.everConnected) return 'connecting';
-    if (!online() || !S()) return 'offline';
-    if (S().estop) return 'estop';
-    if (S().line === 'unknown') return 'unknown';
-    return S().line;
+    return store.linePhase(); // 서버가 라인 상태를 보내지 않으면(XML v1.0) 'unreported'
   }
 
   // 가동 시작 시각: 서버가 알려 주면(started_at) 그것, 아니면 이 화면이 가동을 본 때
@@ -116,6 +115,7 @@
   }
 
   const modeWord = () => t('mode.' + (S() && S().mode === 'manual' ? 'manual' : 'auto'));
+  const modeKnown = () => !!S() && (S().mode === 'auto' || S().mode === 'manual');
 
   ctl.onRender(() => renderRail()); // 조작이 실패하거나 풀리면 윗판 안내를 바로 바꾼다
 
@@ -147,11 +147,12 @@
       error = true;
     }
     else if (fault) { detail = store.faultDetail(st.fault); error = true; }
-    else if (p === 'running') detail = t('db.detail.running', { mode: modeWord(), duration: duration() });
+    else if (p === 'running') detail = modeKnown() ? t('db.detail.running', { mode: modeWord(), duration: duration() }) : t('db.detail.running.unknownMode', { duration: duration() });
     else if (p === 'stopped' && store.homeBlock()) detail = t(store.homeBlock() === 'unset' ? 'detail.homeNotSet' : 'detail.homeRequired'); // 자동 시작을 막는 원점 문제
-    else if (p === 'stopped') detail = t('db.detail.stopped', { mode: modeWord() });
+    else if (p === 'stopped') detail = modeKnown() ? t('db.detail.stopped', { mode: modeWord() }) : t('db.detail.stopped.unknownMode');
     else if (p === 'estop') detail = t('db.detail.estop');
     else if (p === 'unknown') detail = t('detail.unknown', { state: st.lineRaw });
+    else if (p === 'unreported') detail = store.unreportedDetail();
     else detail = t('detail.' + p);
     el.detail.textContent = detail;
     if (error) el.detail.dataset.kind = 'error';
@@ -164,11 +165,12 @@
   }
 
   function renderTally() {
-    const st = (S() && S().stats) || { total: 0, good: 0, defect: 0 };
-    el.total.textContent = st.total.toLocaleString();
-    el.good.textContent = st.good.toLocaleString();
-    el.defect.textContent = st.defect.toLocaleString();
-    el.rate.textContent = (st.total ? (st.defect / st.total) * 100 : 0).toFixed(1) + '%';
+    // 서버가 검사 개수를 무효라고 하면(stats: null — XML v1.0 valid="false") 0 대신 '–'
+    const st = S() && S().stats;
+    el.total.textContent = st ? st.total.toLocaleString() : '–';
+    el.good.textContent = st ? st.good.toLocaleString() : '–';
+    el.defect.textContent = st ? st.defect.toLocaleString() : '–';
+    el.rate.textContent = st ? (st.total ? (st.defect / st.total) * 100 : 0).toFixed(1) + '%' : '–';
     // 분당 처리: 최근 60초 동안 받은 판정 수
     const list = store.state.inspections;
     const now = Date.now();
@@ -406,6 +408,9 @@
     const connected = !!S() && online() && S().devices[id] !== 'disconnected';
     const tel = connected ? store.state.telemetry[id] : null;
     const motors = (tel && tel.motors) || {};
+    // 서보 상태가 없으면 관절 각도 메시지의 각도라도 보인다 (XML v1.0: 리더암 각도만 옴)
+    const jn = connected && !tel ? store.state.joints[id] : null;
+    if (jn && jn.angles) JOINTS.forEach((j) => { if (typeof jn.angles[j] === 'number') motors[j] = { pos: jn.angles[j], posUnit: jn.units && jn.units[j] }; });
     const volts = Object.values(motors).map((m) => m.volt).filter((v) => typeof v === 'number').sort((x, y) => x - y);
     const volt = volts.length ? volts[Math.floor(volts.length / 2)] : null;
     const vLevel = supplyLevel(volt, a.sup);
@@ -689,9 +694,9 @@
 
   el.estop.addEventListener('click', () => {
     if (S() && S().estop) return;
-    // 긴급정지는 다른 요청을 기다리지 않고 바로 보낸다 (조작 화면과 같다)
+    // 긴급정지는 다른 요청을 기다리지 않고 바로 보낸다 (조작 화면과 같다). 서버가 받기만 하고 장비를 멈추지 않았으면(XML v1.0) 그렇게 알린다
     api.estop()
-      .then(() => { ui.estopError = null; renderRail(); })
+      .then((res) => { const note = store.resultNote('estop', res); ui.estopError = note ? note.text : null; renderRail(); })
       .catch((err) => { ui.estopError = store.errorText(err); renderRail(); });
   });
 

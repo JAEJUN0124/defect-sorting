@@ -1,5 +1,5 @@
 // 화면 공통 상태 — 서버 연결을 하나 열고, 받은 메시지로 최신 상태를 모아 둡니다.
-// 조작 화면(app.js)과 대시보드(dashboard.js)가 같은 규칙(연결 끊김 판단·상태 합치기·통계·서보 경고)을 쓰도록 여기에 둡니다.
+// 조작 화면(app.js)과 대시보드(dashboard.js)가 같은 규칙(연결 끊김 판단·상태 합치기·통계·서보 경고·원점)을 쓰도록 여기에 둡니다.
 (function () {
   const cfg = window.HMI_CONFIG;
   const api = window.HmiApi;
@@ -11,7 +11,13 @@
   const SYNC_WAIT_MS = 2000; // 기록 조회가 이보다 늦으면 기다리지 않고 실시간 것을 먼저 보인다
   const POLL_HISTORY_MS = 2000; // 실시간 연결이 없는 서버(push 'poll')면 이 간격으로 기록을 물어 판정·이벤트를 받는다
   const SEEN_KEEP = 2000;
-  const EMPTY_STATUS = { line: 'stopped', estop: false, mode: 'auto', devices: {}, stats: { total: 0, good: 0, defect: 0 }, cameras: {}, fault: null, startedAt: null, homeRequired: false, cycle: null };
+  const POSE_FRESH_MS = 3000; // 원점 잡기에 쓰는 각도는 이보다 최근에 받은 것만
+  // 서버가 처음 보낸 상태에 없는 값의 기본. XML 규약 v1.0은 라인 상태·긴급정지·운전 모드·고장·원점 필요를 보내지 않는다 —
+  // null·undefined(모름). 검사 개수도 서버가 무효(valid="false")라고 하면 null이고, 화면은 '–'로 보인다
+  const EMPTY_STATUS = api.xml
+    ? { line: null, estop: null, mode: null, devices: {}, stats: null, cameras: {}, fault: undefined, startedAt: null, homeRequired: undefined, cycle: null }
+    : { line: 'stopped', estop: false, mode: 'auto', devices: {}, stats: { total: 0, good: 0, defect: 0 }, cameras: {}, fault: null, startedAt: null, homeRequired: false, cycle: null };
+  const JOINTS = window.HmiHome.JOINTS;
 
   const listeners = new Set();
   const state = {
@@ -19,6 +25,7 @@
     everConnected: false,
     status: null, // 서버 상태 (adapter.js가 맞춘 모양)
     info: null, // 서버 정보 (GET /info). v0.1 서버면 null
+    home: window.HmiHome.read(), // 이 HMI에 저장한 원점 (home.js). 없으면 null
     joints: { leader: null, arm: null, target: null },
     telemetry: { arm: null, leader: null },
     metrics: null,
@@ -197,10 +204,10 @@
     const o = opts || {};
     const st = state.status || (state.status = Object.assign({}, EMPTY_STATUS));
     if (o.restored) { /* 통계는 상태가 이미 알려 줬다 */ }
-    else if (d.stats) { if (!o.late || d.stats.total >= st.stats.total) st.stats = d.stats; }
+    else if (d.stats) { if (!o.late || !st.stats || d.stats.total >= st.stats.total) st.stats = d.stats; }
     else if (d.result) {
       // 서버가 판정마다 통계를 안 보내면 HMI가 센다. 다음 상태 메시지의 stats가 오면 그것이 맞는 값이다
-      st.stats = Object.assign({}, st.stats);
+      st.stats = Object.assign({ total: 0, good: 0, defect: 0 }, st.stats);
       st.stats.total += 1;
       st.stats[d.result] += 1;
     }
@@ -253,10 +260,10 @@
         else deliver(msg);
         break;
       case 'joints':
-        if (d) { state.joints[d.source] = d; emit('joints', d); }
+        if (d) { state.joints[d.source] = Object.assign({ receivedAt: Date.now() }, d); emit('joints', state.joints[d.source]); }
         break;
       case 'telemetry':
-        if (d) { state.telemetry[d.arm] = d; watchServos(d); emit('telemetry', d); }
+        if (d) { state.telemetry[d.arm] = Object.assign({ receivedAt: Date.now() }, d); watchServos(d); emit('telemetry', state.telemetry[d.arm]); }
         break;
       case 'metrics':
         state.metrics = Object.assign({ receivedAt: Date.now() }, d);
@@ -358,7 +365,8 @@
 
   const jointName = (id) => known('joint.' + id, id);
   const armName = (id) => known('arm.' + id, id);
-  const reasonText = (code) => known('reason.' + code, code);
+  // 멈춘 이유: 고장 코드(GRIP_FAILED — XML 서버는 GripFailed처럼 보내도 됨)나 컨베이어가 멈춘 이유(watchdog 등)
+  const reasonText = (code) => known('reason.' + code, known('reason.' + String(code).replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase(), code));
 
   // 서버는 문장 대신 코드와 값을 보낸다 — 화면 문구는 여기서 만든다 (모르는 코드는 서버 문장이나 코드 그대로)
   function eventText(evt) {
@@ -390,16 +398,97 @@
   const stageName = (stage) => known('stage.' + stage, stage);
   const stepName = (step) => known('step.' + step, step);
 
-  // ---------- 원점 (docs/API.md v0.4) ----------
-  // 원점은 서버가 저장한다. 상태의 home: 객체 = 저장됨 · null = 아직 없음 · undefined = 서버가 알려 주지 않음(모름)
+  // ---------- 라인 상태 단계 ----------
+  // 'connecting' · 'offline' · 'estop' · 'unknown'(모르는 값) · 'unreported'(서버가 라인 상태를 보내지 않음 — XML v1.0) · 라인 상태.
+  // 'unreported'일 때 화면은 키를 막지 않는다: 할 수 있는지는 서버가 답(받음·거절)으로 알린다
+  function linePhase() {
+    const st = state.status;
+    if (!state.everConnected) return 'connecting';
+    if (!state.online || !st) return 'offline';
+    if (st.estop) return 'estop';
+    if (st.line === 'unknown') return 'unknown';
+    if (!st.line) return 'unreported';
+    return st.line;
+  }
+
+  // 서버가 라인 상태를 보내지 않을 때의 설명 — 화면 값이 어디서 왔는지(시험용 가상 데이터·장비 없음)도 함께
+  function unreportedDetail() {
+    const src = state.status && state.status.source;
+    const from = src === 'simulation' || src === 'unavailable' ? ' ' + t('detail.source.' + src) : '';
+    return t('detail.unreported') + from;
+  }
+
+  // ---------- 원점 (HMI가 저장 — home.js, docs/xml-protocol.md 3장) ----------
+  // 원점은 서버가 아니라 이 HMI가 가진다. state.home: 객체 = 저장됨 · null = 아직 없음
 
   // 자동 시작을 막는 원점 문제: 'unset'(저장된 원점 없음) · 'required'(긴급정지·고장 뒤 원점 복귀 필요) · null.
-  // 원점은 자동 모드에만 필요하다 — 수동 모드는 사람이 리더암으로 팔을 움직인다
+  // 원점은 자동 모드에만 필요하다 — 수동 모드는 사람이 리더암으로 팔을 움직인다. 운전 모드를 모르면(XML v1.0) 막지 않는다
   function homeBlock() {
     const st = state.status;
     if (!st || st.mode !== 'auto') return null;
-    if (st.home === null) return 'unset';
+    if (!state.home) return 'unset';
     return st.homeRequired ? 'required' : null;
+  }
+
+  // 로봇팔의 지금 자세: 로봇팔(팔로워)의 실제 각도 → 없으면 리더암 각도 (수동 모드에서 로봇팔은 리더암을 따라간다).
+  // XML v1.0 서버는 리더암 각도만 보낸다. 여섯 관절이 모두 있고 최근(3초 안)에 받은 것만 쓴다
+  function currentPose() {
+    const fresh = (x) => !!x && Date.now() - (x.receivedAt || 0) <= POSE_FRESH_MS;
+    const full = (angles) => !!angles && JOINTS.every((j) => typeof angles[j] === 'number' && Number.isFinite(angles[j]));
+    const fromTelemetry = (arm) => {
+      const tel = state.telemetry[arm];
+      if (!fresh(tel)) return null;
+      const angles = {};
+      const units = {};
+      JOINTS.forEach((j) => {
+        const m = tel.motors && tel.motors[j];
+        if (m && typeof m.pos === 'number') { angles[j] = m.pos; units[j] = m.posUnit || (j === 'gripper' ? 'pct' : 'deg'); }
+      });
+      return full(angles) ? { angles, units, source: arm } : null;
+    };
+    const fromJoints = (arm) => {
+      const jn = state.joints[arm];
+      return fresh(jn) && full(jn.angles) ? { angles: jn.angles, units: jn.units || {}, source: arm } : null;
+    };
+    return fromTelemetry('arm') || fromJoints('arm') || fromJoints('leader') || fromTelemetry('leader');
+  }
+
+  // 원점 잡기: 지금 자세를 이 HMI에 원점으로 저장한다 (수동 모드). 서버에는 보내지 않는다
+  async function saveHome() {
+    const st = state.status;
+    if (!state.online || !st) throw new api.ApiError('NETWORK', 0);
+    if (st.estop) throw new api.ApiError('ESTOP_ACTIVE', 0); // 힘이 빠져 처진 자세가 원점이 되지 않게
+    if (st.mode === 'auto') throw new api.ApiError('NOT_MANUAL', 0);
+    if (st.line && !['stopped', 'running'].includes(st.line)) throw new api.ApiError('INVALID_STATE', 0);
+    const pose = currentPose();
+    const saved = pose && window.HmiHome.save(pose);
+    if (!saved) throw new api.ApiError('POSE_UNAVAILABLE', 0);
+    state.home = saved;
+    emit('home', saved);
+    emit('event', { code: 'home_set', level: 'info', params: {}, at: saved.setAt, local: true });
+    return { home: saved, persisted: window.HmiHome.persisted() };
+  }
+
+  // 원점 복귀: 저장된 원점 각도를 서버에 보낸다 (자동 모드·정지 상태)
+  function goHome() {
+    if (!state.home) return Promise.reject(new api.ApiError('HOME_NOT_SET', 0));
+    return api.home(state.home);
+  }
+
+  // 라인 시작: 자동 모드에서는 저장된 원점이 있어야 한다 — 원점을 HMI가 가져 서버는 이 조건을 보지 못한다
+  function startLine() {
+    if (homeBlock() === 'unset') return Promise.reject(new api.ApiError('HOME_NOT_SET', 0));
+    return api.start();
+  }
+
+  // 명령이 성공한 뒤 그 자리에 남길 안내: 서버가 받기만 하고 장비는 움직이지 않았다(XML v1.0 Reply executed="false") ·
+  // 원점을 브라우저 저장소에 넣지 못해 창을 닫으면 잊는다
+  function resultNote(name, res) {
+    if (res && res.persisted === false) return { text: t('home.notPersisted'), kind: 'error' };
+    const r = res && res.reply;
+    if (!r || r.executed !== false) return null;
+    if (name !== 'estop') return { text: t('reply.received') };
+    return { text: t(robot.hardwareStop === 'button' ? 'reply.estop.notExecuted.button' : 'reply.estop.notExecuted'), kind: 'error' };
   }
 
   // 시각을 짧게: 오늘이면 시:분:초, 아니면 날짜와 시:분
@@ -414,7 +503,7 @@
 
   // 수동 모드의 원점 잡기 안내 — 마지막으로 저장한 때를 알면 함께 쓴다 (누른 뒤 저장됐는지 여기서 보인다)
   function homeSetHint() {
-    const h = state.status && state.status.home;
+    const h = state.home;
     return h && h.setAt ? t('home.setHint.saved', { time: shortTime(h.setAt) }) : t('home.setHint');
   }
 
@@ -438,6 +527,10 @@
     if (code === 'DEVICES_NOT_READY') return t('error.DEVICES_NOT_READY', { devices: (d.missing || []).map(deviceName).join(', ') });
     if (code === 'FAULT_ACTIVE') return t('error.FAULT_ACTIVE', { fault: faultText({ code: d.fault || d.code || 'FAULT', params: d.params || {} }) });
     if (code === 'POWER_ABNORMAL') return t('error.POWER_ABNORMAL', { arm: armName(d.arm || 'arm') });
+    // XML 규약: 원점 각도를 붙인 원점 복귀를 서버(v1.0)가 아직 받지 않음 · 서버가 모르는 명령 · 서버 규약에 없는 명령
+    if (code === 'XML_INVALID_COMMAND' && d.command === 'Home' && cfg.server.xml && cfg.server.xml.homePose !== false) return t('error.XML_INVALID_COMMAND.homePose');
+    if (code === 'XML_UNKNOWN_COMMAND') return t('error.XML_UNKNOWN_COMMAND', { command: d.command || '?' });
+    if (code === 'NOT_IN_PROTOCOL') return t('error.NOT_IN_PROTOCOL', { command: known('cmd.' + d.command, d.command || '?') });
     const known2 = t('error.' + code);
     if (known2 !== 'error.' + code) return known2;
     if (err && err.serverMessage) return t('error.server', { message: err.serverMessage });
@@ -463,10 +556,19 @@
 
   // ---------- 시작 ----------
 
+  // 끊김 판단: 서버 메시지가 정해진 시간 동안 없으면 끊김. XML 서버는 상태를 1초마다 보내므로 3초(server.xml.statusTimeoutMs)
+  // 넘게 없으면 끊김으로 보고 다시 붙는다 (서버 규약 v1.0 "오류와 연결 처리")
   setInterval(() => {
-    const required = cfg.heartbeatRequired === true || (cfg.heartbeatRequired !== false && heartbeatSeen);
-    if (state.online && required && cfg.heartbeatTimeoutMs > 0 && Date.now() - state.lastMessageAt > cfg.heartbeatTimeoutMs) setOnline(false);
+    const limit = api.xml ? (cfg.server.xml && cfg.server.xml.statusTimeoutMs) || 3000 : cfg.heartbeatTimeoutMs;
+    const required = api.xml || cfg.heartbeatRequired === true || (cfg.heartbeatRequired !== false && heartbeatSeen);
+    if (state.online && required && limit > 0 && Date.now() - state.lastMessageAt > limit) {
+      setOnline(false);
+      if (api.xml) api.reconnect();
+    }
   }, 1000);
+
+  // 다른 창에서 원점을 바꾸면 따라간다
+  window.HmiHome.subscribe((h) => { state.home = h; emit('home', h); });
 
   window.HmiStore = {
     state,
@@ -494,8 +596,15 @@
     errorText,
     stageName,
     stepName,
+    linePhase,
+    unreportedDetail,
     homeBlock,
     homeSetHint,
+    currentPose,
+    saveHome,
+    goHome,
+    startLine,
+    resultNote,
     shortTime,
   };
 })();

@@ -15,8 +15,8 @@
     <header class="tool__head">
       <div>
         <h1 class="tool__title">서버 점검</h1>
-        <p class="tool__lead">서버 담당이 만든 서버를 HMI가 제대로 읽는지 봅니다. 서버 정보·상태를 묻고(GET) 실시간 메시지를 듣기만 합니다.
-          시작·정지 같은 명령은 보내지 않습니다. 결과에 따라 바꿀 설정은 js/config.js에 넣으세요 (대응표: docs/server-cases.md).</p>
+        <p class="tool__lead">서버 담당이 만든 서버를 HMI가 제대로 읽는지 봅니다. 서버 정보·상태를 묻고(XML은 GetStatus·Ping) 실시간 메시지를 듣기만 합니다.
+          시작·정지 같은 명령은 보내지 않습니다. 결과에 따라 바꿀 설정은 js/config.js에 넣으세요 (XML: docs/xml-protocol.md · JSON 대응표: docs/server-cases.md).</p>
       </div>
       <a class="key key--quiet btn" href="../index.html">조작 화면</a>
     </header>
@@ -24,11 +24,17 @@
     <section class="panel-sec" aria-labelledby="addr-title">
       <h2 id="addr-title">주소</h2>
       <div class="row">
-        <label class="field field--wide">API 주소 <input id="api" type="url"></label>
+        <label class="field">형식
+          <select id="format">
+            <option value="xml">XML (서버 규약 v1.0, 웹소켓 하나)</option>
+            <option value="json">JSON (예전 초안, HTTP + 실시간)</option>
+          </select>
+        </label>
+        <label class="field field--wide">API 주소 (JSON일 때) <input id="api" type="url"></label>
         <label class="field field--wide">실시간 주소 (WebSocket) <input id="ws" type="url"></label>
       </div>
       <div class="row">
-        <label class="field">실시간 방식
+        <label class="field">실시간 방식 (JSON일 때)
           <select id="push">
             <option value="auto">자동 찾기</option>
             <option value="ws">WebSocket</option>
@@ -48,7 +54,7 @@
       </div>
       <div class="row">
         <button type="button" class="key btn" id="run">점검 시작</button>
-        <button type="button" class="key key--quiet btn" id="run-mock">가짜 서버로 시험</button>
+        <button type="button" class="key key--quiet btn" id="run-mock">가짜 서버로 시험 (JSON)</button>
       </div>
       <p class="hint" id="progress" aria-live="polite"></p>
     </section>
@@ -71,6 +77,8 @@
   </div>
 
   <script src="../config/robot.js"></script>
+  <script src="../js/xml.js"></script>
+  <script src="../js/xml-protocol.js"></script>
   <script src="../js/adapter.js"></script>
   <script src="../js/transport.js"></script>
   <script src="../js/conveyor.js"></script>
