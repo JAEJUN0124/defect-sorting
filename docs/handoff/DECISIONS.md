@@ -70,3 +70,9 @@ handoff_spec: 1
 - 범위: 조작 화면(`hmi-web-mockup/index.html`)·첫 대시보드(`hmi-web-mockup/dashboard.html`)·탭 대시보드(`hmi-web-mockup/dashboard-tabs.html`)
 - 결정: 세 화면은 서로 기대지 않고 하나만 띄워도 라인을 다룰 수 있어야 한다. 그래서 두 대시보드도 조작 화면의 조작(F-01~F-06)을 모두 갖춘다. 다른 사람에게 보여 줄 사본도 화면마다 따로 만든다.
 - 근거: 사용자 2026-10-12 · HISTORY/2026-10-12-standalone-screens.md
+
+## D-014 원점은 HMI가 저장한다
+- 범위: 원점(F-04)의 저장 위치
+- 결정: 원점 정보는 서버가 아니라 HMI 쪽에 저장한다.
+- 근거: 사용자 2026-10-14 · HISTORY/2026-10-14-home-in-hmi-decision.md
+- 관련 문서: docs/xml-protocol.md
