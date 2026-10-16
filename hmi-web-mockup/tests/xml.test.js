@@ -299,7 +299,7 @@ function xmlApi(xml, wsUrl) {
     useMock: false,
     apiBase: 'http://h/api',
     wsUrl: wsUrl || 'ws://h:5080/ws/hmi',
-    server: { format: 'xml', push: 'sse', xml: Object.assign({ replyTimeoutMs: 80 }, xml) },
+    server: { format: 'xml', push: 'sse', xml: Object.assign({ replyTimeoutMs: 80, pingMs: 0 }, xml) },
     cameras: { primary: 'auto', bboxFormat: 'xywh' },
   };
   load('api.js');
@@ -386,6 +386,21 @@ test('api.js(XML): 거절 답은 id로 찾고 있는 값만 비교한다 (빠진
   ws.receive(`<Message version="1.0" type="Error"><Error code="InvalidXml">bad</Error></Message>`); // id 없음 — 이 요청을 끝내지 않는다
   ws.receive(`<Message version="1.0" type="Reply" id="${idOf(1)}"><Reply command="SetMode" result="Rejected" code="NotStopped" executed="false" /></Message>`);
   await assert.rejects(mode, (e) => e.code === 'NOT_STOPPED');
+});
+
+// 서버의 상태 간격은 바뀔 수 있어(2026-10-16에 60초) 끊김은 Ping/Pong으로 따로 안다
+test('api.js(XML): server.xml.pingMs마다 Ping을 보내고, Pong은 화면에 연결 확인(heartbeat)으로 넘긴다', async () => {
+  const { api, ws, messages } = xmlApi({ pingMs: 40 }, 'ws://ping-test:5080/ws/hmi');
+  await new Promise((r) => setTimeout(r, 130));
+  const pings = ws.sent.map((s) => X.parse(s)).filter((m) => m.attrs.type === 'Ping');
+  assert.ok(pings.length >= 2, 'Ping ' + pings.length + '개');
+  assert.match(pings[0].attrs.id, /^hmi-[a-z0-9]+-ping-\d+$/);
+  ws.receive(`<Message version="1.0" type="Pong" timestamp="2026-10-16T14:00:00Z" id="${pings[0].attrs.id}" />`);
+  assert.ok(messages.some((m) => m.type === 'heartbeat'));
+  api.close(); // Ping 타이머를 멈춘다
+  const sent = ws.sent.length;
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(ws.sent.length, sent);
 });
 
 test('api.js(XML): 연결을 닫으면(프로그램 종료) 다시 붙지 않는다', async () => {

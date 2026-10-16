@@ -167,8 +167,12 @@
       },
     };
     if (xml) {
+      // 연결 확인: server.xml.pingMs(기본 1초)마다 Ping을 보내 Pong을 받는다. 서버의 상태 간격은 바뀔 수 있어(60초 등)
+      // 상태만으로는 끊김을 빨리 알 수 없다 — Pong도 서버 메시지라 끊김 판단(statusTimeoutMs)을 채운다. 0이면 보내지 않음
+      const x = cfg.server.xml && cfg.server.xml.pingMs;
+      const pingMs = typeof x === 'number' ? x : 1000;
       wrapped.ping = () => XP.request('Ping', clientId + '-ping-' + nextCommand++, cfg.server.xml);
-      conn = T.push(Object.assign({}, cfg, { server: Object.assign({}, cfg.server, { push: 'ws' }) }), wrapped);
+      conn = T.push(Object.assign({}, cfg, { server: Object.assign({}, cfg.server, { push: 'ws', clientPingMs: pingMs }) }), wrapped);
     } else {
       conn = mock ? mock.connect(wrapped) : T.push(cfg, wrapped);
     }

@@ -12,6 +12,7 @@
   const POLL_HISTORY_MS = 2000; // 실시간 연결이 없는 서버(push 'poll')면 이 간격으로 기록을 물어 판정·이벤트를 받는다
   const SEEN_KEEP = 2000;
   const POSE_FRESH_MS = 3000; // 원점 잡기에 쓰는 각도는 이보다 최근에 받은 것만
+  const STATUS_POLL_TICK_MS = 250; // 상태가 늦었는지 보는 간격 (XML)
   // 서버가 처음 보낸 상태에 없는 값의 기본. XML 규약 v1.0은 라인 상태·긴급정지·운전 모드·고장·원점 필요를 보내지 않는다 —
   // null·undefined(모름). 검사 개수도 서버가 무효(valid="false")라고 하면 null이고, 화면은 '–'로 보인다
   const EMPTY_STATUS = api.xml
@@ -46,6 +47,8 @@
     pollTimer: 0,
   };
   let started = false;
+  let lastStatusAt = 0; // 마지막으로 상태를 받은 때 (서버가 보낸 것이든 HMI가 물은 답이든)
+  let askingStatus = false; // HMI가 상태를 묻고 답을 기다리는 중
   let heartbeatSeen = false;
   let statusVersion = 0;
   let infoChecked = false;
@@ -255,6 +258,7 @@
     switch (msg.type) {
       case 'status':
         statusVersion += 1;
+        lastStatusAt = Date.now();
         applyStatus(d);
         break;
       case 'inspection':
@@ -463,7 +467,12 @@
     if (st.estop) throw new api.ApiError('ESTOP_ACTIVE', 0); // 힘이 빠져 처진 자세가 원점이 되지 않게
     if (st.mode === 'auto') throw new api.ApiError('NOT_MANUAL', 0);
     if (st.line && !['stopped', 'running'].includes(st.line)) throw new api.ApiError('INVALID_STATE', 0);
-    const pose = currentPose();
+    let pose = currentPose();
+    // 서버가 상태를 드물게 보내면(XML, 간격은 서버 설정 — 60초 등) 각도가 오래됐을 수 있다. 한 번 물어 지금 각도를 받는다
+    if (!pose && api.xml) {
+      try { await api.getStatus(); } catch (err) { /* 아래에서 "각도를 받지 못함"으로 알린다 */ }
+      pose = currentPose();
+    }
     const saved = pose && window.HmiHome.save(pose);
     if (!saved) throw new api.ApiError('POSE_UNAVAILABLE', 0);
     state.home = saved;
@@ -561,8 +570,8 @@
 
   // ---------- 시작 ----------
 
-  // 끊김 판단: 서버 메시지가 정해진 시간 동안 없으면 끊김. XML 서버는 상태를 1초마다 보내므로 3초(server.xml.statusTimeoutMs)
-  // 넘게 없으면 끊김으로 보고 다시 붙는다 (서버 규약 v1.0 "오류와 연결 처리")
+  // 끊김 판단: 서버 메시지가 정해진 시간 동안 없으면 끊김. XML은 3초(server.xml.statusTimeoutMs) 넘게 없으면 끊김으로 보고
+  // 다시 붙는다 (서버 규약 v1.0 "오류와 연결 처리"). 서버가 상태를 드물게 보내도 HMI의 Ping에 대한 Pong이 1초마다 오므로 끊김으로 보지 않는다
   setInterval(() => {
     const limit = api.xml ? (cfg.server.xml && cfg.server.xml.statusTimeoutMs) || 3000 : cfg.heartbeatTimeoutMs;
     const required = api.xml || cfg.heartbeatRequired === true || (cfg.heartbeatRequired !== false && heartbeatSeen);
@@ -571,6 +580,19 @@
       if (api.xml) api.reconnect();
     }
   }, 1000);
+
+  // 상태가 오래 안 오면 HMI가 묻는다 (XML): 서버의 상태 간격은 바뀔 수 있다 (사용자 2026-10-16 — 그날 60초로 바뀜).
+  // 끊김은 Ping/Pong으로 따로 안다(api.js, server.xml.pingMs). 상태는 server.xml.statusPollMs(기본 60초)보다 오래 오지 않을 때만 묻는다.
+  // 서버가 그보다 자주 보내면 묻지 않는다. 답을 기다리는 동안은 다시 묻지 않는다
+  setInterval(() => {
+    const x = cfg.server.xml && cfg.server.xml.statusPollMs;
+    const every = typeof x === 'number' ? x : 60000;
+    if (!api.xml || !(every > 0) || !state.online || askingStatus || Date.now() - lastStatusAt < every) return;
+    askingStatus = true;
+    api.getStatus()
+      .catch(() => { /* 답은 상태 메시지로도 오고, 답이 없으면 끊김 판단이 맡는다 */ })
+      .finally(() => { askingStatus = false; });
+  }, STATUS_POLL_TICK_MS);
 
   // 다른 창에서 원점을 바꾸면 따라간다
   window.HmiHome.subscribe((h) => { state.home = h; emit('home', h); });
@@ -586,6 +608,7 @@
           // 기록 조회가 없는 서버(XML 등)는 다시 켜졌는지 알 수 없고, 순번은 서버를 켤 때부터 다시 센다 (XML 회신 2026-10-16) —
           // 다시 붙으면 지난 순번을 잊는다. 그러지 않으면 재시작한 서버의 판정·이벤트를 이미 본 것으로 버린다
           if (state.history.supported === false) forgetSeq();
+          lastStatusAt = Date.now(); // 서버가 접속 직후 보내는 상태를 기다린다 (곧바로 묻지 않게)
           setOnline(true);
           beginSync();
           refresh();

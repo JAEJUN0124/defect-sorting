@@ -34,8 +34,10 @@ window.HMI_CONFIG = {
     xml: {
       version: '1.0',        // 보내는 메시지의 version
       replyTimeoutMs: 5000,  // 이 안에 서버의 답(Reply)이 없으면 "응답 미확인" (실패로 단정하지 않음)
-      statusTimeoutMs: 3000, // 상태(1초마다 옴)가 이 시간 동안 없으면 끊김으로 보고 다시 붙음
-      homePose: true,        // 원점 복귀 때 HMI가 저장한 원점 각도를 함께 보냄. 서버 v1.0은 아직 받지 않음(거절) — false면 이름만
+      statusTimeoutMs: 3000, // 서버 메시지(상태·Pong·답)가 이 시간 동안 없으면 끊김으로 보고 다시 붙음
+      pingMs: 1000,          // 연결 확인: 이 간격으로 Ping을 보내 Pong을 받음. 서버의 상태 간격(바뀔 수 있음, 60초 등)과 상관없이 끊김을 빨리 앎. 0이면 보내지 않음
+      statusPollMs: 60000,   // 서버 상태가 이 시간 동안 오지 않으면 HMI가 GetStatus로 물음. 원점 잡기 때 각도가 오래됐으면 그때도 한 번 물음. 0이면 묻지 않음
+      homePose: true,        // 원점 복귀 때 HMI가 저장한 원점 각도를 함께 보냄 (서버가 받아 검사함). 각도를 받지 않는 옛 서버면 false로 이름만
       // commands: { stop: 'Stop', … } — 서버 명령 이름 바꾸기 (기본값과 요청안 이름: js/xml-protocol.js DEFAULTS)
     },
     push: 'ws',            // 실시간 메시지를 받는 방식: 'ws' · 'socketio' · 'sse' · 'poll'

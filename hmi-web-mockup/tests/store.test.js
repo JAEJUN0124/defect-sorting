@@ -10,12 +10,13 @@ const JOINTS = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wr
 const tick = () => new Promise((r) => setTimeout(r, 10));
 
 // store.js를 새로 불러온다. 가짜 서버 연결이 받은 handlers(onOpen·onClose·onMessage)로 메시지를 넣는다
-function freshStore(api) {
-  window.HMI_CONFIG = { useMock: false, server: { xml: {} }, cameras: {}, heartbeatTimeoutMs: 0 };
+function freshStore(api, xml) {
+  window.HMI_CONFIG = { useMock: false, server: { xml: Object.assign({}, xml) }, cameras: {}, heartbeatTimeoutMs: 0 };
   window.HMI_ROBOT = {};
   window.I18N = { t: (k) => k };
-  window.HmiHome = { JOINTS, read: () => null, save: () => null, subscribe: () => () => {}, persisted: () => null };
-  window.HmiApi = Object.assign({ xml: true, reconnect() {}, close() {} }, api);
+  window.HmiHome = { JOINTS, read: () => null, save: (pose) => Object.assign({ setAt: new Date().toISOString() }, pose), subscribe: () => () => {}, persisted: () => true };
+  class ApiError extends Error { constructor(code) { super(code); this.code = code; } }
+  window.HmiApi = Object.assign({ xml: true, ApiError, reconnect() {}, close() {} }, api);
   const full = path.join(__dirname, '..', 'js', 'store.js');
   delete require.cache[require.resolve(full)];
   // store.js는 불러올 때 끊김을 보는 1초 타이머를 건다 — 시험이 끝나도 프로세스를 붙잡지 않게
@@ -49,6 +50,77 @@ test('store.js: 기록 조회가 없는 서버(XML)는 다시 붙으면 지난 �
   await tick();
   handlers.onMessage(ev('estop_pressed', 1));
   assert.deepEqual(seen, ['line_started:1', 'estop_pressed:1']);
+});
+
+// 서버의 상태 간격은 바뀔 수 있다 (2026-10-16에 60초로 바뀜). 상태가 늦으면 HMI가 GetStatus로 묻는다
+test('store.js: 서버 상태가 늦으면 상태를 묻고, 답을 기다리는 동안은 다시 묻지 않으며, 상태가 자주 오면 묻지 않는다', async () => {
+  let handlers = null;
+  let asked = 0;
+  let answer = null;
+  const store = freshStore({
+    connect(h) { handlers = h; },
+    getInfo: async () => null,
+    getHistory: async () => null,
+    getStatus() { asked += 1; return new Promise((resolve) => { answer = resolve; }); },
+  }, { statusPollMs: 100 });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  store.start();
+  handlers.onOpen();
+  await sleep(10);
+  assert.equal(asked, 1); // 연결되면 한 번 묻는다 (refresh)
+  await sleep(400); // 상태가 오지 않음 → 물음. 답을 기다리는 동안은 더 묻지 않음
+  assert.equal(asked, 2);
+  answer({});
+  await sleep(400); // 답은 왔지만 상태 메시지는 여전히 없음 → 다시 물음
+  assert.equal(asked, 3);
+  answer({});
+  // 상태가 50ms마다 오면 묻지 않는다
+  const feed = setInterval(() => handlers.onMessage({ type: 'status', data: {} }), 50);
+  await sleep(600);
+  clearInterval(feed);
+  assert.equal(asked, 3);
+});
+
+test('store.js: statusPollMs가 0이면 상태를 묻지 않는다', async () => {
+  let handlers = null;
+  let asked = 0;
+  const store = freshStore({
+    connect(h) { handlers = h; },
+    getInfo: async () => null,
+    getHistory: async () => null,
+    getStatus: async () => { asked += 1; return {}; },
+  }, { statusPollMs: 0 });
+  store.start();
+  handlers.onOpen();
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(asked, 1); // 연결 때 한 번(refresh)뿐
+});
+
+test('store.js: 원점 잡기 때 각도가 오래됐으면(상태가 드문 서버) 상태를 한 번 물어 지금 각도로 저장한다', async () => {
+  let handlers = null;
+  let asked = 0;
+  const angles = { shoulder_pan: 1, shoulder_lift: -2, elbow_flex: 3, wrist_flex: -4, wrist_roll: 5, gripper: 6 };
+  const store = freshStore({
+    connect(h) { handlers = h; },
+    getInfo: async () => null,
+    getHistory: async () => null,
+    // 연결 때 묻는 것(refresh)에는 각도를 주지 않고, 그 뒤에 물으면 지금 각도가 온다 (서버 답의 상태에 실려 오는 것처럼)
+    async getStatus() {
+      asked += 1;
+      if (asked > 1) handlers.onMessage({ type: 'joints', data: { source: 'leader', unit: 'deg', angles, units: {} } });
+      return {};
+    },
+  }, { statusPollMs: 0 });
+  store.start();
+  handlers.onOpen();
+  handlers.onMessage({ type: 'status', data: {} });
+  await tick();
+  assert.equal(asked, 1);
+  const res = await store.saveHome();
+  assert.equal(asked, 2); // 각도가 없어 한 번 물었다
+  assert.deepEqual(res.home.angles, angles);
+  await store.saveHome(); // 이번에는 각도가 새것이라 묻지 않는다
+  assert.equal(asked, 2);
 });
 
 test('store.js: stop()은 서버 연결을 닫는다 (프로그램 종료 — 이 HMI만 끝낸다)', () => {
