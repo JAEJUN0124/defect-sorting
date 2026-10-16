@@ -31,7 +31,7 @@ python hmi-web-mockup/tools/dev-server.py 5173
 http://localhost:5173/?mock=0&format=json&api=http://192.168.0.10:8000/api&ws=ws://192.168.0.10:8000/ws&push=socketio
 ```
 
-`mock=0`(실제 서버) · `format`(`xml`·`json`, 기본 `xml`) · `api` · `ws` · `push`(`ws`·`socketio`·`sse`·`poll`)를 주소 뒤에 붙입니다. 대시보드로 가는 버튼도 같은 설정을 넘깁니다.
+`mock=0`(실제 서버) · `format`(`xml`·`json`, 기본 `xml`) · `api` · `ws` · `push`(`ws`·`socketio`·`sse`·`poll`)를 주소 뒤에 붙입니다.
 XML 서버는 `?mock=0&ws=ws://192.168.0.10:5080/ws/hmi`면 됩니다.
 
 ## 2. 주소와 연결
@@ -192,7 +192,7 @@ Socket.IO의 Engine.IO 3(python-socketio 4.x 이하)은 지원하지 않습니�
 | 서보 부하를 원시값(0.1% 단위) | 100을 넘는 값을 본 뒤부터 원시값으로 | 처음부터 맞추려면 **설정** `robot.loadUnit: 'permille'` |
 | 서보 경고(과열·전압)를 서버가 안 보냄 | HMI가 서보 상태로 판단해 기록 (55°C 경고·65°C 비상, 어댑터 정격 ±10%) | 기준은 `config/robot.js limits`·`supply` |
 | 서버도 서보 경고를 보냄 | 서버 것만 씀 (첫 `servo_*` 이벤트를 받은 뒤 HMI 판단은 멈춤) | 늘 HMI도 판단하려면 `localAlarms: true` |
-| 서보 상태(`telemetry`)를 아예 안 보냄 | 대시보드 서보 표가 "–" | **요청**: 1~2Hz로 (LeRobot `bus.sync_read`로 읽을 수 있음) |
+| 서보 상태(`telemetry`)를 아예 안 보냄 | HMI가 서보 과열·전압 이상을 알 수 없어 경고를 기록하지 못함 (서보 표를 보이던 대시보드는 2026-10-17에 없앰) | **요청**: 1~2Hz로 (LeRobot `bus.sync_read`로 읽을 수 있음) |
 
 ## 13. 연결 끊김 판단
 
@@ -228,7 +228,7 @@ python hmi-web-mockup/tests/variant-server.py 8765
 
 | 서버가 이렇게 하면 | HMI 동작 | 할 일 |
 |---|---|---|
-| 기록 조회가 없음 (404·405·501) | 화면을 연 뒤 받은 것만 보임 (v0.2와 같음). 대시보드 시스템 탭에 "지난 기록: 서버에 없음" | 그대로 — 또는 **요청**: `GET /api/history` |
+| 기록 조회가 없음 (404·405·501) | 화면을 연 뒤 받은 것만 보임 (v0.2와 같음) | 그대로 — 또는 **요청**: `GET /api/history` |
 | 경로가 다름 (`/api/logs` 등) | 없는 것으로 봄 | **설정** `server.paths: { history: '/logs' }` |
 | 이름이 다름 (`logs`·`results`·`buckets`·`runId`·`server_time`) | 자동 | — |
 | 판정·이벤트에 순번(`seq`)이 없음 | 처음 열 때 채우기는 됨. 다시 붙을 때 겹친 기록을 가려내지 못함 | **요청**: `seq` (서버 점검이 알려 줌) |
@@ -241,7 +241,7 @@ python hmi-web-mockup/tests/variant-server.py 8765
 
 | 서버가 이렇게 하면 | HMI 동작 | 할 일 |
 |---|---|---|
-| `cycle`이 없음 | 대시보드 공정 흐름은 가동 여부만 보임. 가짜 카메라 영상은 계속 돎 | 그대로 — 또는 **요청**: `cycle` |
+| `cycle`이 없음 | 지금 화면은 `cycle`을 쓰지 않음 (공정 흐름을 보이던 대시보드는 2026-10-17에 없앰) | 그대로 — 또는 **요청**: `cycle` |
 | 단계 이름이 다름 (`PICKING`·`judging`·`eject` 등) | 자동 (`adapter.js`의 `STAGE` 표) | 모르는 이름은 그대로 보임 — 자주 쓰면 표에 한 줄 더함 |
 | 단계를 글자 하나로 보냄 (`"process": "sorting"`) | 자동 | — |
 | `home_required`가 없음 | 원점 필요 안내를 하지 않음. 서버가 `409 HOME_REQUIRED`로 거절하면 그때 이유를 보임 | **요청**: `home_required` |

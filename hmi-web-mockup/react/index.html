@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>불량 선별 HMI</title>
+  <script>
+    // 테마를 그리기 전에 정한다 (js/config.js와 같은 규칙: 주소의 ?theme= > 화면에서 고른 값(브라우저에 저장) > PC 설정)
+    (function () {
+      var theme = new URLSearchParams(location.search).get('theme');
+      var saved = null;
+      try { saved = localStorage.getItem('hmi.theme'); } catch (e) { /* 저장이 막힌 브라우저 */ }
+      var pick = theme === 'light' || theme === 'dark' ? theme : theme === 'auto' ? null : saved === 'light' || saved === 'dark' ? saved : null;
+      if (pick) document.documentElement.dataset.theme = pick;
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+</head>
+<body data-phase="offline">
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

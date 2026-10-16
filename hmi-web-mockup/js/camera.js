@@ -5,7 +5,7 @@
 //   webrtc   WHEP 방식(SDP를 POST)으로 받는다 (MediaMTX·go2rtc·aiortc 등). 지연이 가장 짧다
 //   video    <video>로 연다 (MP4·WebM 스트림, HLS는 브라우저가 직접 재생할 때만)
 //   local    이 PC에 꽂힌 USB 카메라를 직접 연다. config.js cameras.local.upload가 있으면 서버로 올려 보낸다
-//   mock     가짜 영상 (camera-sim.js)
+//   mock     가짜 서버의 카메라. 영상이 없다고 알린다 (가짜 영상은 실제 카메라를 쓰면서 뺐다, 사용자 2026-10-17)
 // 서버가 판정 상자 좌표(bbox)를 보내면 영상 위에 겹쳐 그립니다.
 (function () {
   const cfg = window.HMI_CONFIG;
@@ -54,8 +54,6 @@
   class CameraView {
     constructor(stage, options) {
       this.stage = stage;
-      this.sim = options.sim || null;
-      this.zoom = options.zoom || 1;
       this.labels = options.labels || { good: t('result.good'), defect: t('result.defect') };
       this.onState = options.onState || (() => {});
       this.current = null;
@@ -96,7 +94,7 @@
     setState(next, detail) {
       if (this.state === next && !detail) return;
       this.state = next;
-      const text = next === 'loading' ? t('camera.waiting') : next === 'error' ? t(detail === 'no-url' ? 'camera.noUrl' : detail === 'local' ? 'camera.localFailed' : 'camera.failed') : '';
+      const text = next === 'loading' ? t('camera.waiting') : next === 'error' ? t(detail === 'no-url' ? 'camera.noUrl' : detail === 'local' ? 'camera.localFailed' : detail === 'mock' ? 'camera.noMock' : 'camera.failed') : '';
       this.status.textContent = text;
       this.status.hidden = !text;
       this.onState(next, detail);
@@ -141,11 +139,8 @@
       return Math.round((this.frames.length / 2) * 10) / 10;
     }
 
-    startMock(src, cur) {
-      const canvas = this.mount(cur, 'canvas');
-      const view = this.sim.attach(canvas, { zoom: this.zoom });
-      cur.cleanup.push(() => this.sim.detach(view));
-      this.setState('live');
+    startMock() {
+      this.setState('error', 'mock');
     }
 
     startMjpeg(src, cur) {

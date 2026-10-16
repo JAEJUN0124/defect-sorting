@@ -1,5 +1,5 @@
 /* =========================================================
-   불량 선별 HMI — 공통 바탕 (조작 화면 · 대시보드)
+   불량 선별 HMI — 공통 바탕 (조작 화면 · 점검 페이지)
    색은 IEC 60073 표시등 의미로만 쓴다:
    빨강 = 비상, 노랑 = 이상·진행 중, 초록 = 정상 가동.
    그 밖의 모든 것은 회색 단계로 그린다 (ISA-101 방식).
@@ -8,7 +8,7 @@
          다크 = 같은 제어함의 안트라사이트(RAL 7016/7021) 판.
    두 테마는 색 토큰만 다르고 배치·크기·글자는 같다.
    긴급정지(노란 판 위 빨간 버튼)는 ISO 13850 고정색이라 테마와 무관하다.
-   화면별 배치는 hmi.css(조작 화면), dashboard.css(대시보드)에 있다.
+   화면별 배치는 hmi.css(조작 화면), tools.css(점검 페이지)에 있다.
    ========================================================= */
 
 :root {
@@ -43,13 +43,6 @@
   --c-signal-red: #C8102E;  /* 비상 글자 · 표시등 · 알림 점 */
   --c-amber-text: #7A4F00;  /* 노랑 계열 글자용 (대비 4.5:1 이상) */
   --c-green: #1F7A4D;
-
-  /* 계기(아날로그 지시계)·차트 — ISA-101: 평소에는 회색, 벗어날 때만 신호색 */
-  --c-track: #D3D7DB;        /* 눈금 바탕 */
-  --c-band: #B4BBC1;         /* 정상 범위 */
-  --c-grid: #D3D7DB;         /* 차트 눈금선 */
-  --c-chart-good: #5F676F;   /* 양품 막대 — 바탕 대비 4.81:1 */
-  --c-chart-defect: #A67C00; /* 불량 막대 — IEC 노랑의 짙은 단계, 바탕 대비 3.19:1 */
 
   /* 글자 — Bringhurst 비례 14 · 16 · 21 · 36 */
   --font: 'IBM Plex Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
@@ -98,11 +91,6 @@
     --c-signal-red: #FF7D82;
     --c-amber-text: #F2B705;
     --c-green: #34A86E;
-    --c-track: #343C42;
-    --c-band: #4F585F;
-    --c-grid: #343C42;
-    --c-chart-good: #8A9199;
-    --c-chart-defect: #F2B705;
     color-scheme: dark;
   }
 }
@@ -125,11 +113,6 @@
   --c-signal-red: #FF7D82;
   --c-amber-text: #F2B705;
   --c-green: #34A86E;
-  --c-track: #343C42;
-  --c-band: #4F585F;
-  --c-grid: #343C42;
-  --c-chart-good: #8A9199;
-  --c-chart-defect: #F2B705;
   color-scheme: dark;
 }
 

@@ -1,2 +1,6 @@
 # Claude Code 개인 설정(권한 허용 목록 등)은 올리지 않는다
 .claude/settings.local.json
+
+# React 조작 화면 (hmi-web-mockup/react): 받은 패키지와 빌드 결과는 올리지 않는다
+hmi-web-mockup/react/node_modules/
+hmi-web-mockup/react/dist/

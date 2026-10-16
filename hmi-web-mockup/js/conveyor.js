@@ -288,7 +288,7 @@
 
   // ---------- 2. 가짜 아두이노 ----------
   // 벨트 위에 부품이 spacingMm 간격으로 놓여 있고, 검사 자리의 센서가 부품 앞 끝이 닿으면 !PART 1, 다 지나가면 !PART 0을 보낸다.
-  // 속도 100%가 maxMmS(mm/s)다. 기본값(50% = 50mm/s, 간격 80mm)이면 부품이 1.6초마다 온다 — camera-sim.js와 같은 빠르기.
+  // 속도 100%가 maxMmS(mm/s)다. 기본값(50% = 50mm/s, 간격 80mm)이면 부품이 1.6초마다 온다.
   class FakeConveyor {
     constructor(options) {
       this.opt = Object.assign({

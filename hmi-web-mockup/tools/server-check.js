@@ -314,7 +314,7 @@
         if (!st.devices) results.push(['warn', '상태에 장치 연결(devices)이 없습니다. 시작 실패 이유를 화면에 쓰기 어렵습니다.']);
         results.push(st.cycle !== undefined || st.homeRequired !== undefined
           ? ['ok', `v0.3 상태: 공정 단계(cycle) ${st.cycle !== undefined ? '있음' : '없음'}, 원점 필요(home_required) ${st.homeRequired !== undefined ? '있음' : '없음'}.`]
-          : ['info', '상태에 공정 단계(cycle)·원점 필요(home_required)가 없습니다 (v0.3). 없어도 동작하지만 대시보드 공정 흐름은 가동 여부만 보입니다.']);
+          : ['info', '상태에 공정 단계(cycle)·원점 필요(home_required)가 없습니다 (v0.3). 없어도 동작하지만 긴급정지·고장 뒤 원점 복귀가 필요한지는 화면이 알 수 없습니다.']);
         // 영상 주소 열어 보기 (MJPEG·JPEG만 여기서 시험, 나머지는 장치 점검의 '서버 영상 주소 시험')
         const cams = Object.entries(st.cameras || {});
         for (const [id, c] of cams) {

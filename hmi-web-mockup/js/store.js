@@ -1,5 +1,5 @@
 // 화면 공통 상태 — 서버 연결을 하나 열고, 받은 메시지로 최신 상태를 모아 둡니다.
-// 조작 화면(app.js)과 대시보드(dashboard.js)가 같은 규칙(연결 끊김 판단·상태 합치기·통계·서보 경고·원점)을 쓰도록 여기에 둡니다.
+// 화면(React 조작 화면, react/src/App.jsx)이 쓰는 규칙(연결 끊김 판단·상태 합치기·통계·서보 경고·원점)을 여기에 둡니다.
 (function () {
   const cfg = window.HMI_CONFIG;
   const api = window.HmiApi;

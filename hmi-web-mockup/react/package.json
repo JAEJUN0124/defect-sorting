@@ -1,0 +1,20 @@
+{
+  "name": "hmi-react",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "불량 선별 HMI 조작 화면 (React). 통신·상태 로직은 ../js/ 를 그대로 쓴다",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.4"
+  }
+}
