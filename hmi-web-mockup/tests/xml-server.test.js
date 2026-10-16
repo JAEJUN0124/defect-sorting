@@ -101,6 +101,39 @@ test('시험용 XML 서버 v1.0: 접속 직후 상태 · 조회 · 명령 받음
   assert.equal(await c.closed, 1003);
 });
 
+// 메인 서버가 HMI 화면도 내주는 구성 흉내 (--static): 같은 주소에서 화면 파일과 웹소켓
+test('시험용 XML 서버 --static: "/"는 index.html, 폴더 밖·모르는 종류는 404, 같은 주소의 /ws/hmi는 그대로 웹소켓', { skip: !PY && 'python 없음' }, async (t) => {
+  // 내줄 폴더(www)와 그 바깥 파일(secret.html)을 만든다
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const net = require('node:net');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xml-static-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(dir, 'www', 'js'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'www', 'index.html'), '<!doctype html><title>HMI</title>');
+  fs.writeFileSync(path.join(dir, 'www', 'js', 'a.js'), 'var a = 1;');
+  fs.writeFileSync(path.join(dir, 'www', 'note.py'), 'x = 1');
+  fs.writeFileSync(path.join(dir, 'secret.html'), 'secret');
+  const url = await startServer(t, ['--simulation', '--static', path.join(dir, 'www')]);
+  const http = url.replace(/^ws/, 'http').replace(/\/ws\/hmi$/, '');
+  const index = await fetch(http + '/');
+  assert.equal(index.status, 200);
+  assert.match(index.headers.get('content-type'), /text\/html/);
+  assert.equal(await index.text(), '<!doctype html><title>HMI</title>');
+  assert.match((await fetch(http + '/js/a.js')).headers.get('content-type'), /javascript/);
+  assert.equal((await fetch(http + '/note.py')).status, 404); // 모르는 종류
+  // 폴더 밖: fetch는 /../를 지워 버리므로 요청 줄을 그대로 보낸다
+  const { port } = new URL(http);
+  const line = await new Promise((resolve) => {
+    const s = net.connect(Number(port), '127.0.0.1', () => s.write('GET /../secret.html HTTP/1.1\r\nHost: x\r\n\r\n'));
+    s.on('data', (d) => { resolve(String(d).split('\r\n')[0]); s.destroy(); });
+  });
+  assert.equal(line, 'HTTP/1.1 404 Not Found');
+  const c = await connect(url);
+  assert.ok(await c.next(type('Status'), 1000));
+  c.ws.close();
+});
+
 test('시험용 XML 서버 요청안(--extended): 라인 상태가 바뀌고, 각도가 붙은 원점 복귀를 받는다', { skip: !PY && 'python 없음' }, async (t) => {
   const url = await startServer(t, ['--simulation', '--extended', '--interval-ms', '300']);
   const c = await connect(url);

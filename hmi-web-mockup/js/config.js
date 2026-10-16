@@ -9,7 +9,8 @@ window.HMI_CONFIG = {
 
   // true: 브라우저 안의 가짜 서버(mock-server.js)로 동작합니다. 실제 서버가 생기면 false.
   useMock: true,
-  // 서버 주소. XML 서버(서버 담당 규약 v1.0)는 웹소켓 하나만 쓴다: 다른 PC면 localhost를 서버 PC의 IP로
+  // 서버 주소. XML 서버(서버 담당 규약 v1.0)는 웹소켓 하나만 쓴다: 다른 PC면 localhost를 서버 PC의 IP로.
+  // 'auto'면 이 화면을 내준 서버의 /ws/hmi에 붙는다 — 메인 서버에 HMI를 올렸을 때 (http면 ws, https면 wss). 파일로 열면 localhost
   wsUrl: 'ws://localhost:5080/ws/hmi',
   apiBase: 'http://localhost:8000/api', // server.format이 'json'일 때만 씀
 
@@ -85,6 +86,11 @@ window.HMI_CONFIG = {
   if (['xml', 'json'].includes(params.get('format'))) cfg.server.format = params.get('format');
   if (params.get('api')) cfg.apiBase = params.get('api');
   if (params.get('ws')) cfg.wsUrl = params.get('ws');
+  // 메인 서버에 올린 HMI(wsUrl 'auto', 주소 뒤 ?ws=auto로도): 화면을 내준 서버의 웹소켓
+  if (cfg.wsUrl === 'auto') {
+    const served = /^https?:$/.test(location.protocol) && location.host;
+    cfg.wsUrl = served ? (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/hmi' : 'ws://localhost:5080/ws/hmi';
+  }
   if (['ws', 'socketio', 'sse', 'poll'].includes(params.get('push'))) cfg.server.push = params.get('push');
   if (params.get('homePose') === '0' || params.get('homePose') === '1') cfg.server.xml.homePose = params.get('homePose') === '1';
 

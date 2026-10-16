@@ -24,6 +24,28 @@ python hmi-web-mockup/tools/dev-server.py 5173
 | `http://localhost:5173/tools/devices.html` | 장치 점검 — 로봇팔 서보·자세 저장·USB 카메라·컨베이어(아두이노) 규약 점검 (설치·고장 확인용) |
 | `http://localhost:5173/tools/server-check.html` | 서버 점검 — 서버 형식 확인과 `config.js` 제안 값 |
 
+다른 PC에서도 열려면 이 PC의 장비망 주소로 받게 띄웁니다 (미리보기 설정의 `hmi-web-mockup-lan`과 같음).
+서버가 이 PC의 IPv4 주소를 알려 주고, 다른 PC는 `http://<이 PC 주소>:8080/?mock=0&ws=ws://<서버 주소>:5080/ws/hmi`로 엽니다.
+같은 망에 있어야 하고(브라우저가 서버에 직접 붙음), Windows 방화벽이 Python의 접속을 막으면 허용해야 합니다. 인증이 없으니 믿을 수 있는 망에서만 씁니다.
+(2026-10-17 다른 PC에서 실제 서버에 붙는 것을 확인 — 사용자. Claude 앱 안의 브라우저는 이 주소에서 서버로 나가는 접속을 막아 확인에 쓸 수 없음)
+
+```bash
+python hmi-web-mockup/tools/dev-server.py 8080 --host 0.0.0.0
+```
+
+### 메인 서버에 올리기
+
+HMI 화면을 서버 담당의 메인 서버가 직접 내주게 하면, 화면과 통신이 한 서버(`http://서버:5080/`)로 모입니다.
+아래 명령이 메인 서버용 묶음을 만듭니다. zip 안의 `wwwroot/`를 서버 프로젝트(`src/Ecp.HmiServer/`)에 넣고 서버에서 정적 파일을 켜면 됩니다.
+서버 쪽 할 일은 zip 안의 `README-server.md`와 [서버 답장 0.1](../docs/hmi-server-answer-1.md)에 있습니다.
+
+```bash
+python hmi-web-mockup/tools/make-server-bundle.py hmi-main-server.zip
+```
+
+- 묶음의 `js/config.js`는 메인 서버용으로 바뀝니다: `useMock: false`, `wsUrl: 'auto'`(화면을 내준 서버의 `/ws/hmi`, https면 `wss`). 시험·개발 도구(`tests/`, `tools/dev-server.py`)는 빠집니다.
+- 이 구성을 시험용 서버로 흉내 내려면 `python hmi-web-mockup/tests/xml-server.py 5091 --simulation --static hmi-web-mockup`을 띄우고 `http://localhost:5091/?mock=0&ws=auto`를 엽니다 (미리보기 설정 `xml-server-hosting`).
+
 주소 뒤에 붙이는 설정 (설정 파일보다 우선, 화면 이동 버튼이 그대로 넘김)
 
 | 붙이는 것 | 뜻 |
@@ -31,7 +53,7 @@ python hmi-web-mockup/tools/dev-server.py 5173
 | `?dev=0` / `?dev=1` | 배포 화면 / 개발 화면 (장치 연결·흉내 버튼) |
 | `?theme=light` · `dark` · `auto` | 테마 고정 |
 | `?mock=0` | 가짜 서버 대신 실제 서버 |
-| `?ws=…` | 서버 주소 (예: `?mock=0&ws=ws://192.168.0.10:5080/ws/hmi`) |
+| `?ws=…` | 서버 주소 (예: `?mock=0&ws=ws://192.168.0.10:5080/ws/hmi`). `?ws=auto`면 화면을 내준 서버의 `/ws/hmi` |
 | `?homePose=0` | 원점 복귀 때 원점 각도를 붙이지 않음 (각도를 아직 받지 않는 서버 v1.0용) |
 | `?format=json&api=…&push=…` | 예전 JSON 서버 (`push`: `socketio` · `sse` · `poll`) |
 

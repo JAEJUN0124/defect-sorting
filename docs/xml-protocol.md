@@ -17,7 +17,7 @@ HMI와 서버는 웹소켓 하나로 XML을 주고받습니다 (D-002). 기준�
 
 | 항목 | 값 |
 |---|---|
-| 주소 | `config.js`의 `wsUrl`. 기본 `ws://localhost:5080/ws/hmi`. 서버 기본은 `ws://127.0.0.1:5080/ws/hmi`로 같은 PC에서만 붙습니다. 다른 PC면 `ws://서버내부IP:5080/ws/hmi`, 포트포워딩한 외부면 `ws://공인IP:외부포트/ws/hmi`. 실제 주소는 서버 담당이 따로 알려 주기로 했습니다 (회신 Q6) |
+| 주소 | `config.js`의 `wsUrl`. 기본 `ws://localhost:5080/ws/hmi`. 서버 기본은 `ws://127.0.0.1:5080/ws/hmi`로 같은 PC에서만 붙습니다. 다른 PC면 `ws://서버내부IP:5080/ws/hmi`, 포트포워딩한 외부면 `ws://공인IP:외부포트/ws/hmi`. 받은 내부 주소는 `ws://10.108.108.98:5080/ws/hmi` (사용자 2026-10-16). `'auto'`(주소 뒤 `?ws=auto`)면 화면을 내준 서버의 `/ws/hmi` — HMI를 메인 서버에 올렸을 때 (`tools/make-server-bundle.py`, 서버 답장 0.1) |
 | 형식 | `config.js`의 `server.format: 'xml'` (기본). `'json'`이면 예전 초안 |
 | 시험 주소 | 설정 파일을 고치지 않고 `index.html?mock=0&ws=ws://서버IP:5080/ws/hmi` (대시보드 단추가 같은 값을 넘김) |
 | 상태 받기 | 서버가 상태를 보내는 간격은 서버 설정(`PushIntervalMs`)이라 바뀔 수 있음 (2026-10-16에 1초 → 60초, 앞으로도 바꿀 수 있음 — 사용자). 화면 값은 그 간격대로 바뀜. 상태가 60초(`server.xml.statusPollMs`) 넘게 오지 않을 때만 HMI가 `GetStatus`로 물음. 원점 잡기 때 각도가 3초보다 오래됐으면 그때 한 번 물음 |

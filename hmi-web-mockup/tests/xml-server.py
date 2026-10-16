@@ -20,6 +20,9 @@ v1.0과 같게 하는 것 (서버 담당 회신 docs/hmi-server-reply-1.md, 2026
   판정(Inspection)·명령 실행(executed="true")·상태에 따른 거절 코드·Stop(ProgramStop의 별칭, 회신의 제안)·CameraStart·CameraStop.
   완료 이벤트(HomeCompleted · LineStopped)에는 요청 id를 <Param name="requestId">로 싣는다 (회신의 제안)
 
+--static <폴더>: 웹소켓이 아닌 GET에는 그 폴더의 파일로 답한다 ("/" → index.html). 메인 서버가 HMI 화면도 내주는 구성을
+  흉내 낸다 — 화면과 웹소켓이 같은 주소라 HMI는 주소 뒤 ?mock=0&ws=auto (메인 서버용 묶음은 그대로)로 붙는다
+
 실행: python hmi-web-mockup/tests/xml-server.py 5080 --simulation
 그다음 http://localhost:5173/?mock=0&ws=ws://localhost:5080/ws/hmi
 """
@@ -27,6 +30,7 @@ import argparse
 import base64
 import hashlib
 import math
+import os
 import random
 import socket
 import socketserver
@@ -34,6 +38,7 @@ import struct
 import sys
 import threading
 import time
+import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape, quoteattr
@@ -378,6 +383,35 @@ def execute(client, req_id, name, cmd, mode, angles):
 
 # ---------- 연결 ----------
 
+CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml", ".json": "application/json", ".png": "image/png", ".ico": "image/x-icon",
+}
+
+
+def http_reply(sock, status, ctype, body):
+    head = f"HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {len(body)}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+    sock.sendall(head.encode() + body)
+
+
+def serve_static(sock, method, path):
+    """--static: 폴더의 파일로 답한다 ("/" → index.html). 폴더 밖·모르는 종류는 404"""
+    root = os.path.realpath(ARGS.static)
+    rel = urllib.parse.unquote(path.split("?")[0]).lstrip("/") or "index.html"
+    full = os.path.realpath(os.path.join(root, rel))
+    ext = os.path.splitext(full)[1].lower()
+    if not full.startswith(root + os.sep) or not os.path.isfile(full) or ext not in CONTENT_TYPES:
+        http_reply(sock, "404 Not Found", "text/plain", b"Not found\n")
+        return
+    with open(full, "rb") as f:
+        body = f.read()
+    if method == "HEAD":
+        head = f"HTTP/1.1 200 OK\r\nContent-Type: {CONTENT_TYPES[ext]}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n"
+        sock.sendall(head.encode())
+        return
+    http_reply(sock, "200 OK", CONTENT_TYPES[ext], body)
+
+
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         sock = self.request
@@ -395,6 +429,9 @@ class Handler(socketserver.BaseRequestHandler):
         path = parts[1] if len(parts) > 1 else ""
         headers = {k.strip().lower(): v.strip() for k, v in (ln.split(":", 1) for ln in lines[1:] if ":" in ln)}
         if path.split("?")[0] != "/ws/hmi" or headers.get("upgrade", "").lower() != "websocket":
+            if ARGS.static and parts[0] in ("GET", "HEAD"):
+                serve_static(sock, parts[0], path)
+                return
             body = b"HMI WebSocket is at /ws/hmi\n"
             sock.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: " + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body)
             return
@@ -481,11 +518,12 @@ def main():
     p.add_argument("--simulation", action="store_true", help="연결·가동 true, 각도·검사 개수가 변함")
     p.add_argument("--extended", action="store_true", help="v1.0 다음 요청안(docs/xml-protocol.md 4장)도 흉내")
     p.add_argument("--interval-ms", type=int, default=1000, help="상태 전송 간격 (100~60000)")
+    p.add_argument("--static", help="웹소켓이 아닌 GET에 이 폴더의 파일로 답함 (메인 서버가 HMI 화면도 내주는 구성 흉내)")
     ARGS = p.parse_args()
     ARGS.interval_ms = max(100, min(60000, ARGS.interval_ms))
     threading.Thread(target=ticker, daemon=True).start()
     with Server((ARGS.host, ARGS.port), Handler) as srv:
-        mode = ("simulation" if ARGS.simulation else "unavailable") + (" + extended" if ARGS.extended else "")
+        mode = ("simulation" if ARGS.simulation else "unavailable") + (" + extended" if ARGS.extended else "") + (" + static" if ARGS.static else "")
         print(f"xml-server ws://{ARGS.host}:{srv.server_address[1]}/ws/hmi ({mode})", flush=True)  # 포트 0이면 빈 포트
         try:
             srv.serve_forever()

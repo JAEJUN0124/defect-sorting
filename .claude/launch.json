@@ -8,6 +8,12 @@
       "port": 5173
     },
     {
+      "name": "hmi-web-mockup-lan",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["hmi-web-mockup/tools/dev-server.py", "8080", "--host", "0.0.0.0"],
+      "port": 8080
+    },
+    {
       "name": "variant-server",
       "runtimeExecutable": "python",
       "runtimeArgs": ["hmi-web-mockup/tests/variant-server.py", "8765"],
@@ -24,6 +30,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["hmi-web-mockup/tests/xml-server.py", "5082"],
       "port": 5082
+    },
+    {
+      "name": "xml-server-hosting",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["hmi-web-mockup/tests/xml-server.py", "5091", "--simulation", "--static", "hmi-web-mockup"],
+      "port": 5091
     },
     {
       "name": "xml-server-extended",
