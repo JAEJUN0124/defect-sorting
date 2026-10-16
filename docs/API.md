@@ -127,7 +127,7 @@ v0.2·v0.3은 더하기만 했습니다. v0.4는 원점(F-04)의 뜻이 바뀌�
 | 정지 (일반) | `POST /api/line/stop` | 없음 | `200` 상태 | `409 INVALID_STATE` |
 | F-02 긴급정지 | `POST /api/estop` | 없음 | `200` 상태 (항상 허용, 여러 번 보내도 같음) | — |
 | F-02 해제 | `POST /api/estop/release` | 없음 | `200` 상태. 라인은 `stopped` 유지 | `409 ESTOP_NOT_ACTIVE` |
-| F-03 종료 | `POST /api/system/shutdown` | 없음 | `202`. 정리가 끝나면 실시간 `shutdown_complete` | — |
+| F-03 종료 | — (2026-10-16부터 서버 명령 없음) | — | HMI 화면만 닫음. 라인과 장비는 그대로 (사용자 2026-10-16). 예전 초안의 `POST /api/system/shutdown`은 HMI가 보내지 않음 | — |
 | F-04 원점 복귀 | `POST /api/robot/home` | `{ "angles": { 관절: 값 }, "units": { 관절: "deg" \| "pct" }, "unit": "deg" }` (v0.5: HMI가 저장한 원점) | `202`. 끝나면 실시간 `home_complete` | `409 NOT_AUTO` `409 NOT_STOPPED` `409 ESTOP_ACTIVE` `409 HOME_NOT_SET`(각도 없음) `422 INVALID_ANGLES` `409 DEVICES_NOT_READY` |
 | F-04 원점 잡기 | — (v0.5: 서버 명령 없음) | — | HMI가 로봇팔의 지금 자세를 브라우저에 저장 | HMI가 막음: 긴급정지 중 · 자동 모드 · 각도를 받지 못함 |
 | F-05 카메라 켜기 | `POST /api/camera/start` | 없음(모든 카메라) 또는 `{ "camera": "top" }` | `200 { "url": "...", "cameras": { ... } }` | `409 DEVICES_NOT_READY` `404 CAMERA_NOT_FOUND` |
@@ -212,7 +212,7 @@ XML 규약에서의 모양은 [xml-protocol.md 3장](xml-protocol.md#3-원점--h
 | `metrics` | `{ "inference_ms", "fps": { 카메라: 값 }, "cpu", "queue" }` | (v0.2) 2초마다 |
 | `frame` | `{ "camera", "mime": "image/jpeg", "data": "<base64>" }` | 영상을 주 연결로 보낼 때만 ([7장](#7-카메라-영상-방식)) |
 | `home_complete` | `{}` | 원점 복귀가 끝났을 때 |
-| `shutdown_complete` | `{}` | 종료 정리가 끝났을 때 |
+| `shutdown_complete` | `{}` | 쓰지 않음 — 프로그램 종료는 2026-10-16부터 HMI만 닫음 |
 | `heartbeat` | `{ "at" }` | 2초마다. HMI는 heartbeat를 한 번이라도 받은 뒤부터 6초 동안 아무 메시지가 없으면 연결 끊김으로 표시 |
 
 `inspection`의 선택 필드
@@ -242,7 +242,7 @@ XML 규약에서의 모양은 [xml-protocol.md 3장](xml-protocol.md#3-원점--h
 | `device_disconnected` | warning | `device` |
 | `device_reconnected` | info | `device` |
 | `camera_started` / `camera_stopped` | info | `camera` (선택) |
-| `shutdown_started` | info | — |
+| `shutdown_started` | info | — (쓰지 않음 — 프로그램 종료는 2026-10-16부터 HMI만 닫음) |
 | `servo_overheat` | warning · alarm | `arm`, `joint`, `temp`, `limit` — v0.2 |
 | `servo_voltage` | warning · alarm | `arm`, `volt`, `nominal` — v0.2 |
 | `servo_error` | alarm | `arm`, `joint`, `faults` — v0.2 |
@@ -313,7 +313,7 @@ HMI가 하는 일
 | HMI 살아 있음 | `config.js server.clientPingMs > 0`일 때 | `{ "type": "ping", "data": { "at": "..." } }` — 서버가 HMI가 끊겼을 때 라인을 세우려면 이것을 보고 판단 |
 | 카메라 영상 | 카메라가 HMI PC에 꽂혀 있고 `cameras.local.upload`를 정했을 때 | 웹소켓 바이너리, 장면마다 JPEG 한 장 |
 
-명령 이름: `info` `status` `history` `start` `stop` `estop` `release` `home`(원점 복귀) `mode` `cameraStart` `cameraStop` `shutdown` (`config.js server.commandNames`로 바꿀 수 있음). 원점 잡기는 v0.5부터 HMI 안에서 끝나 서버 명령이 없습니다.
+명령 이름: `info` `status` `history` `start` `stop` `estop` `release` `home`(원점 복귀) `mode` `cameraStart` `cameraStop` (`config.js server.commandNames`로 바꿀 수 있음). 원점 잡기는 v0.5부터, 프로그램 종료는 2026-10-16부터 HMI 안에서 끝나 서버 명령이 없습니다.
 명령을 실시간 연결로 보낼 때 `history`의 값(`after` 등)은 `body`에 담습니다.
 
 ## 7. 카메라 영상 방식

@@ -85,7 +85,7 @@
 | 원점 복귀 (F-04, 자동 모드·정지 상태) | 그대로 (멈춤) | `move_home(angles)` — HMI가 보낸 원점으로 | `homing` → `stopped`, `home_required: false`, `clear: home` 고장을 지움 |
 | 원점 잡기 (F-04, 수동 모드) | — | — (HMI가 지금 각도를 저장, 서버 명령 없음) | 바뀌지 않음 |
 | 운전 모드 전환 (F-06) | 그대로 | 수동이면 `teleop` 준비 | 정지 상태에서만 (D-003) |
-| 프로그램 종료 (F-03) | `STOP` | `park` 작업 → 힘 빼기 | `shutdown_complete` |
+| 프로그램 종료 (F-03) | — | — | 바뀌지 않음. HMI 화면만 닫고 서버에는 보내지 않음 (사용자 2026-10-16) |
 
 시작을 거절하는 순서: 긴급정지(`ESTOP_ACTIVE`) → 상태(`INVALID_STATE`) → `clear: auto` 고장(`FAULT_ACTIVE`) → 자동 모드면 원점 필요(`HOME_REQUIRED`) → 장치 연결(`DEVICES_NOT_READY`). 저장된 원점이 있는지는 HMI가 보고, 없으면 시작을 보내지 않습니다.
 

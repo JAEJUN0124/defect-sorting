@@ -80,7 +80,7 @@ Socket.IO의 Engine.IO 3(python-socketio 4.x 이하)은 지원하지 않습니�
 
 | 서버가 이렇게 하면 | HMI 동작 | 할 일 |
 |---|---|---|
-| REST 경로·방식이 다름 (`POST /run`, `POST /mode/set`) | — | **설정** `server.paths: { start: '/run', mode: 'POST /mode/set' }` (이름: `info status start stop estop release home mode cameraStart cameraStop shutdown`) |
+| REST 경로·방식이 다름 (`POST /run`, `POST /mode/set`) | — | **설정** `server.paths: { start: '/run', mode: 'POST /mode/set' }` (이름: `info status start stop estop release home mode cameraStart cameraStop`) |
 | 명령을 웹소켓으로만 받음 | `{type:'command', data:{id, name, body}}`를 보내고 `command_result`를 기다림 | **설정** `server.commands: 'ws'`, 이름이 다르면 `server.commandNames` |
 | 명령을 Socket.IO 이벤트로 받음 | 이벤트 이름 = 명령 이름, 응답(ack)을 결과로 씀 | **설정** `push: 'socketio'` + `commands: 'ws'` |
 | 운전 모드 값이 `AUTO`/`MANUAL` 등 | 받을 때는 자동. 보낼 때 다르면 422가 나고 화면에 "요청 형식을 받지 않았습니다" | **설정** `server.modeValues: { auto: 'AUTO', manual: 'MANUAL' }` (서버 점검이 대문자를 보면 이 줄을 만들어 줌) |

@@ -117,9 +117,7 @@
       }
       // 서버가 다시 켜졌으면 순번이 처음부터다: 지난 순번은 잊고 새 기록을 처음부터 받는다
       if (!initial && h.runId && h.runId !== state.history.runId) {
-        sync.seen.clear();
-        sync.lastSeq = 0;
-        sync.minutesSeq = 0;
+        forgetSeq();
         h = (await ask(undefined)) || h;
       }
       state.history.supported = true;
@@ -157,6 +155,12 @@
     });
     state.minutes = Array.from(byMinute.values()).sort((a, b) => a.t - b.t).slice(-MINUTES_KEEP);
     if (typeof lastSeq === 'number') sync.minutesSeq = lastSeq;
+  }
+
+  function forgetSeq() {
+    sync.seen.clear();
+    sync.lastSeq = 0;
+    sync.minutesSeq = 0;
   }
 
   // 순번이 있는 판정·이벤트는 한 번만 쓴다
@@ -279,7 +283,6 @@
         setInfo(d);
         break;
       case 'home_complete':
-      case 'shutdown_complete':
         emit(msg.type, d);
         break;
       default:
@@ -527,8 +530,10 @@
     if (code === 'DEVICES_NOT_READY') return t('error.DEVICES_NOT_READY', { devices: (d.missing || []).map(deviceName).join(', ') });
     if (code === 'FAULT_ACTIVE') return t('error.FAULT_ACTIVE', { fault: faultText({ code: d.fault || d.code || 'FAULT', params: d.params || {} }) });
     if (code === 'POWER_ABNORMAL') return t('error.POWER_ABNORMAL', { arm: armName(d.arm || 'arm') });
-    // XML 규약: 원점 각도를 붙인 원점 복귀를 서버(v1.0)가 아직 받지 않음 · 서버가 모르는 명령 · 서버 규약에 없는 명령
+    // XML 규약: 원점 각도를 붙인 원점 복귀를 서버(v1.0)가 아직 받지 않음 · 카메라 명령을 서버가 아직 받지 않음(카메라 이름을 붙이면
+    // InvalidCommand — 서버 담당 회신 2026-10-16) · 서버가 모르는 명령 · 서버 규약에 없는 명령
     if (code === 'XML_INVALID_COMMAND' && d.command === 'Home' && cfg.server.xml && cfg.server.xml.homePose !== false) return t('error.XML_INVALID_COMMAND.homePose');
+    if (code === 'XML_INVALID_COMMAND' && /^Camera(Start|Stop)$/.test(d.command || '')) return t('error.XML_INVALID_COMMAND.camera');
     if (code === 'XML_UNKNOWN_COMMAND') return t('error.XML_UNKNOWN_COMMAND', { command: d.command || '?' });
     if (code === 'NOT_IN_PROTOCOL') return t('error.NOT_IN_PROTOCOL', { command: known('cmd.' + d.command, d.command || '?') });
     const known2 = t('error.' + code);
@@ -577,11 +582,20 @@
       if (started) return;
       started = true;
       api.connect({
-        onOpen() { setOnline(true); beginSync(); refresh(); },
+        onOpen() {
+          // 기록 조회가 없는 서버(XML 등)는 다시 켜졌는지 알 수 없고, 순번은 서버를 켤 때부터 다시 센다 (XML 회신 2026-10-16) —
+          // 다시 붙으면 지난 순번을 잊는다. 그러지 않으면 재시작한 서버의 판정·이벤트를 이미 본 것으로 버린다
+          if (state.history.supported === false) forgetSeq();
+          setOnline(true);
+          beginSync();
+          refresh();
+        },
         onClose() { setOnline(false); },
         onMessage,
       });
     },
+    // 서버 연결을 닫는다 (프로그램 종료 — 이 HMI만 끝낸다). 다시 붙지 않는다
+    stop() { api.close(); },
     refresh,
     cameraIds,
     primaryCamera,

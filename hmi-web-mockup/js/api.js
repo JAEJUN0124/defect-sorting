@@ -128,7 +128,8 @@
     throw new ApiError(e.code, res.status, e.details, e.message);
   }
 
-  // 받은 답이 기다리던 요청의 것인지: XML은 명령 이름·목표 모드까지 맞아야 한다 (다른 버튼의 답으로 쓰지 않는다)
+  // 받은 답이 기다리던 요청의 것인지: id로 찾고, 답에 명령 이름·목표 모드가 있으면 그것도 맞아야 한다 (다른 버튼의 답으로 쓰지 않는다).
+  // 거절 답에는 mode가, 형식이 틀린 명령의 답에는 command가 없을 수 있다 — 없는 값은 비교하지 않는다 (서버 담당 회신 2026-10-16)
   function matches(entry, data) {
     if (entry.command && data.command && data.command !== entry.command) return false;
     if (entry.mode && data.mode && data.mode !== entry.mode) return false;
@@ -148,6 +149,9 @@
           if (msg.type === 'command_result' && msg.data) {
             const p = pendingCommands.get(String(msg.data.id));
             if (p && matches(p, msg.data)) {
+              // 형식이 틀린 명령의 거절에는 명령 이름이 없을 수 있다 — 보낸 이름으로 채운다 (오류 문구가 명령에 따라 다르다)
+              const details = msg.data.body && msg.data.body.error && msg.data.body.error.details;
+              if (details && !details.command && p.command) details.command = p.command;
               p.resolve({ status: msg.data.status, body: msg.data.body });
               return;
             }
@@ -182,6 +186,11 @@
     connect,
     // 상태 메시지가 끊겼을 때 다시 붙기 (store.js가 부른다)
     reconnect() { if (conn && conn.reconnect) conn.reconnect(); },
+    // 연결을 닫고 다시 붙지 않는다 (프로그램 종료 — 이 HMI만 끝낸다)
+    close() {
+      if (conn && conn.close) conn.close();
+      conn = null;
+    },
     // 서버 정보(v0.2). 없는 서버(v0.1)·XML 규약이면 null
     async getInfo() {
       if (xml) return null;
@@ -216,6 +225,5 @@
     setMode: (mode) => call('mode', { mode: xml ? mode : modeValue(mode) }),
     startCamera: (camera) => call('cameraStart', camera ? { camera } : undefined),
     stopCamera: (camera) => call('cameraStop', camera ? { camera } : undefined),
-    shutdown: () => call('shutdown'),
   };
 })();

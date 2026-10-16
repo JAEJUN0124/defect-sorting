@@ -11,8 +11,8 @@
   const $ = (id) => document.getElementById(id);
   const SVG = 'http://www.w3.org/2000/svg';
 
-  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', shutdown: 'amber', unknown: 'amber' };
-  const BLINKING = ['connecting', 'starting', 'stopping', 'homing', 'shutdown'];
+  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', unknown: 'amber' };
+  const BLINKING = ['connecting', 'starting', 'stopping', 'homing'];
   const NOTIFY_SKIP = ['defect_detected']; // 불량 검출은 정상 공정이라 경보 목록에 넣지 않는다 (조작 화면 알림 점과 같은 기준)
   const ALARM_KEEP = 4; // 1440×900에서 스크롤 없이 들어가는 만큼 (윗판 2단 조작 줄 포함, 지난 기록 전체는 조작 화면의 로그 창)
   const RECENT_ROWS = 4;
@@ -46,7 +46,7 @@
   store.subscribe((kind, data) => {
     switch (kind) {
       case 'online':
-        if (!data && ui.connectedOnce) pushAlarm({ code: 'server_lost', level: 'warning', at: new Date().toISOString() });
+        if (!data && ui.connectedOnce && !ctl.ended) pushAlarm({ code: 'server_lost', level: 'warning', at: new Date().toISOString() });
         if (data) ui.connectedOnce = true;
         ui.staleSince = data ? null : Date.now();
         render();
@@ -92,7 +92,7 @@
   });
 
   function phase() {
-    if (ctl.exiting) return 'shutdown';
+    if (ctl.ended) return 'shutdown'; // 프로그램 종료로 이 HMI를 닫음
     return store.linePhase(); // 서버가 라인 상태를 보내지 않으면(XML v1.0) 'unreported'
   }
 
@@ -117,7 +117,11 @@
   const modeWord = () => t('mode.' + (S() && S().mode === 'manual' ? 'manual' : 'auto'));
   const modeKnown = () => !!S() && (S().mode === 'auto' || S().mode === 'manual');
 
-  ctl.onRender(() => renderRail()); // 조작이 실패하거나 풀리면 윗판 안내를 바로 바꾼다
+  // 조작이 실패하거나 풀리면 윗판 안내를 바로 바꾼다. 프로그램 종료면 영상도 끈다 (연결을 닫아 다음 상태가 오지 않는다)
+  ctl.onRender(() => {
+    renderRail();
+    if (ctl.ended) renderCams();
+  });
 
   // ---------- 그리기 ----------
 

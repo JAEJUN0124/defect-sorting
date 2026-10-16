@@ -15,7 +15,7 @@ window.HMI_I18N.ko = {
   'state.stopping': '정지 중',
   'state.homing': '원점 복귀 중',
   'state.estop': '긴급정지',
-  'state.shutdown': '종료 중',
+  'state.shutdown': 'HMI 종료',
   'state.unknown': '알 수 없음',
   'state.unreported': '상태 미수신',
 
@@ -29,7 +29,7 @@ window.HMI_I18N.ko = {
   'detail.stopping': '컨베이어와 로봇팔을 멈추고 있습니다.',
   'detail.homing': '로봇팔 6축을 저장된 원점으로 옮기고 있습니다.',
   'detail.estop': '모든 조작이 잠겼습니다. 주변 안전을 확인한 뒤 해제하세요.',
-  'detail.shutdown': '라인을 멈추고 장치 연결을 정리하고 있습니다.',
+  'detail.shutdown': 'HMI를 닫았습니다. 라인과 장비는 그대로입니다.',
   'detail.unknown': '서버가 알 수 없는 상태({state})를 보냈습니다. 긴급정지와 프로그램 종료만 쓸 수 있습니다.',
   // 서버가 라인 상태를 보내지 않음 (XML 규약 v1.0) — 키를 막지 않고 서버의 답으로 알린다
   'detail.unreported': '서버가 라인 상태를 보내지 않습니다. 명령은 서버가 받았는지만 확인됩니다.',
@@ -92,7 +92,6 @@ window.HMI_I18N.ko = {
   'cmd.mode': '운전 모드 전환',
   'cmd.cameraStart': '카메라 켜기',
   'cmd.cameraStop': '카메라 끄기',
-  'cmd.shutdown': '프로그램 종료',
 
   // 모드
   'mode.legend': '운전 모드',
@@ -277,6 +276,7 @@ window.HMI_I18N.ko = {
   'error.XML_UNKNOWN_COMMAND': '서버가 아직 모르는 명령입니다({command}). 서버 담당이 이 명령을 추가해야 합니다.',
   'error.XML_INVALID_COMMAND': '서버가 이 명령의 형식을 받지 않았습니다(InvalidCommand). 서버 규약 판을 확인하세요.',
   'error.XML_INVALID_COMMAND.homePose': '서버가 원점 각도가 붙은 원점 복귀를 아직 받지 않습니다(InvalidCommand). 서버 담당이 지원하기 전까지는 config.js의 server.xml.homePose를 false로 두면 각도 없이 보냅니다.',
+  'error.XML_INVALID_COMMAND.camera': '서버가 아직 카메라 명령을 받지 않습니다(InvalidCommand). 서버 담당이 카메라 명령을 추가해야 합니다.',
   'error.XML_INVALID_XML': '서버가 HMI가 보낸 XML을 읽지 못했습니다(InvalidXml).',
   'error.XML_INVALID_REQUEST': '서버가 요청 형식을 받지 않았습니다(InvalidRequest). 서버 규약 판을 확인하세요.',
   'error.XML_UNSUPPORTED_VERSION': '서버가 이 규약 판을 받지 않습니다(UnsupportedVersion). config.js의 server.xml.version을 확인하세요.',
@@ -310,11 +310,11 @@ window.HMI_I18N.ko = {
   'dialog.setHome.body': '로봇팔의 지금 6축 각도를 이 HMI에 새 원점으로 저장합니다. 저장된 원점은 덮어씁니다.',
   'dialog.setHome.confirm': '원점 저장',
   'dialog.exit.title': '프로그램을 종료할까요?',
-  'dialog.exit.body': '라인을 멈추고 장치 연결을 정리한 뒤 HMI를 닫습니다.',
+  'dialog.exit.body': 'HMI 화면만 닫습니다. 서버에는 아무것도 보내지 않으므로 라인과 장비는 그대로입니다.',
   'dialog.exit.confirm': '프로그램 종료',
 
   'ended.title': 'HMI를 종료했습니다',
-  'ended.body': '이 창을 닫아도 됩니다.',
+  'ended.body': '라인과 장비는 그대로입니다. 이 창을 닫아도 되고, 다시 쓰려면 새로 고치세요.',
 
   // 대시보드 (감시 화면)
   'db.title': '불량 선별 대시보드',
@@ -384,7 +384,7 @@ window.HMI_I18N.ko = {
   'ctl.camera.off': '끄기',
   'ctl.estop.clear': '걸려 있지 않음',
   'ctl.estop.idle': '긴급정지는 윗판의 빨간 단추로 겁니다.',
-  'ctl.exit.desc': '장치 연결을 정리하고 HMI를 닫습니다.',
+  'ctl.exit.desc': 'HMI 화면만 닫습니다. 라인과 장비는 그대로입니다.',
   'ctl.home.title': '원점',
   'ctl.runLabel': '시작과 정지',
   'ctl.safety': '긴급정지와 종료',

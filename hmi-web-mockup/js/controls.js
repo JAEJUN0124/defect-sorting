@@ -7,7 +7,7 @@
 //   data-ctl="set-home"    원점 잡기 — 로봇팔의 지금 자세를 이 HMI에 원점으로 저장한다 (수동 모드, 확인 창)
 //   data-ctl="mode"        운전 모드. data-mode="auto" | "manual"
 //   data-ctl="camera-on" · "camera-off"  카메라 켜기/끄기. data-camera로 id를 주면 그 카메라만, 없으면 모든 카메라
-//   data-ctl="exit"        프로그램 종료 (확인 창 → 종료 화면)
+//   data-ctl="exit"        프로그램 종료 (확인 창 → 종료 화면). 이 HMI만 닫고 서버에는 보내지 않는다
 //   data-note="mode home"  처럼 기능 이름을 적은 자리에 실패 이유나 지금 누를 수 없는 이유를 쓴다 (앞에 적은 것부터).
 //                          data-note-short가 있으면 늘 붙는 안내는 짧은 문장으로 (좁은 자리)
 // 확인 창(#dlg)과 종료 화면(#ended)은 화면 HTML에 둔다 — 조작 화면과 같은 구조.
@@ -19,14 +19,14 @@
   const S = () => store.state.status;
   const online = () => store.state.online;
 
-  const ui = { busy: new Set(), notes: {}, exiting: false, ended: false, exitTimer: 0, lastError: null, lastPhase: null };
+  const ui = { busy: new Set(), notes: {}, ended: false, lastError: null, lastPhase: null };
   const listeners = new Set();
   const dlg = { el: $('dlg'), title: $('dlg-title'), body: $('dlg-body'), confirm: $('dlg-confirm'), cancel: $('dlg-cancel') };
   const all = (sel) => Array.from(document.querySelectorAll(sel));
   const camKey = (node) => 'camera:' + (node.dataset.camera || 'all');
 
   function phase() {
-    if (ui.exiting) return 'shutdown';
+    if (ui.ended) return 'shutdown';
     return store.linePhase();
   }
   const modeKnown = () => !!S() && (S().mode === 'auto' || S().mode === 'manual');
@@ -103,7 +103,7 @@
       const busy = ui.busy.has(camKey(b));
       const lost = !!id && !!st && st.devices['camera_' + id] === 'disconnected';
       b.hidden = id ? streamingOf(id) : ids.length > 0 && ids.every(streamingOf);
-      b.disabled = !online() || !st || busy || lost || ui.exiting;
+      b.disabled = !online() || !st || busy || lost || ui.ended;
       const label = b.querySelector('[data-ctl-label]');
       if (label) label.textContent = t(busy ? 'camera.connecting' : b.dataset.label || 'camera.connect');
     });
@@ -112,7 +112,7 @@
       b.hidden = id ? !streamingOf(id) : !ids.some(streamingOf);
       b.disabled = ui.busy.has(camKey(b));
     });
-    all('[data-ctl="exit"]').forEach((b) => { b.disabled = ui.exiting; });
+    all('[data-ctl="exit"]').forEach((b) => { b.disabled = ui.ended; });
 
     all('[data-note]').forEach((n) => {
       let note = null;
@@ -142,7 +142,7 @@
   }
 
   store.subscribe((kind) => {
-    if (kind === 'shutdown_complete') { finishExit(); return; }
+    if (ui.ended) return; // 프로그램 종료로 이 HMI를 닫았다
     if (kind === 'history') { renderHistoryNotes(); return; }
     if (!['status', 'online', 'info', 'home'].includes(kind)) return;
     clearSolvedNotes();
@@ -202,12 +202,14 @@
     });
   }
 
+  // 프로그램 종료: 이 HMI만 끝낸다 (사용자 2026-10-16). 서버에는 아무것도 보내지 않아 라인과 장비는 그대로다.
+  // 서버 연결을 닫고, 브라우저는 스크립트가 연 창만 닫을 수 있어 종료 화면을 남긴다. 영상은 화면마다 ended를 보고 끈다
   function finishExit() {
     if (ui.ended) return;
-    clearTimeout(ui.exitTimer);
     ui.ended = true;
+    store.stop();
     const ended = $('ended');
-    if (ended) ended.hidden = false; // 브라우저는 스크립트가 연 창만 닫을 수 있어 종료 화면을 남긴다
+    if (ended) ended.hidden = false;
     render();
   }
 
@@ -237,26 +239,13 @@
     } else if (kind === 'camera-off') {
       act(camKey(b), () => api.stopCamera(b.dataset.camera));
     } else if (kind === 'exit') {
-      if (!(await confirmDialog('exit'))) return;
-      ui.exiting = true;
-      delete ui.notes.exit;
-      render();
-      try {
-        await api.shutdown();
-        ui.exitTimer = setTimeout(finishExit, 5000); // 완료 알림이 오지 않아도 5초 뒤에는 닫는다
-      } catch (err) {
-        ui.exiting = false;
-        ui.notes.exit = { text: store.errorText(err), kind: 'error' };
-        ui.lastError = 'exit';
-        render();
-      }
+      if (await confirmDialog('exit')) finishExit();
     }
   });
 
   window.HmiControls = {
     render,
     phase,
-    get exiting() { return ui.exiting; },
     get ended() { return ui.ended; },
     // 윗판에 쓸 가장 최근 실패 안내 (없으면 null)
     message() { return ui.lastError && ui.notes[ui.lastError] ? ui.notes[ui.lastError].text : null; },

@@ -3,6 +3,7 @@
 - 날짜: 2026-10-14
 - 보내는 쪽: HMI 담당
 - 기준: 서버 문서 「ECP HMI 통신 서버」의 XML 규약 v1.0
+- 회신: [hmi-server-reply-1.md](hmi-server-reply-1.md) (2026-10-16 받음). 이 문서는 보낸 그대로 둡니다 — 회신으로 바뀐 것은 [xml-protocol.md](xml-protocol.md), 우리 답장 초안은 [hmi-server-answer-1.md](hmi-server-answer-1.md)
 
 v1.0 문서 잘 받았습니다. HMI는 v1.0에 맞춰 연결, 상태 표시, 명령 보내기, Reply 처리를 붙였습니다.
 이 문서는 HMI가 제대로 동작하려면 서버에 더 필요한 것과, 먼저 답을 듣고 싶은 질문을 모은 것입니다.

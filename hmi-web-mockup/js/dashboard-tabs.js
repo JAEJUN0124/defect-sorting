@@ -14,8 +14,8 @@
   const SVG = 'http://www.w3.org/2000/svg';
 
   const TABS = ['overview', 'control', 'production', 'inspection', 'arm', 'leader', 'devices', 'alarms', 'system'];
-  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', shutdown: 'amber', unknown: 'amber' };
-  const BLINKING = ['connecting', 'starting', 'stopping', 'homing', 'shutdown'];
+  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', unknown: 'amber' };
+  const BLINKING = ['connecting', 'starting', 'stopping', 'homing'];
   const LOG_SKIP = ['defect_detected']; // 불량 검출은 정상 공정이라 기록·알림에 넣지 않는다 (원래 대시보드와 같은 기준)
   const LOG_KEEP = cfg.logLimit || 200;
   const DEVICE_CODES = ['device_disconnected', 'device_reconnected', 'server_lost', 'server_back', 'camera_started', 'camera_stopped', 'line_stopped_fault', 'start_rejected'];
@@ -155,7 +155,7 @@
   }
 
   function phase() {
-    if (ctl.exiting) return 'shutdown';
+    if (ctl.ended) return 'shutdown'; // 프로그램 종료로 이 HMI를 닫음
     return store.linePhase(); // 서버가 라인 상태를 보내지 않으면(XML v1.0) 'unreported'
   }
 
@@ -185,7 +185,7 @@
   store.subscribe((kind, data) => {
     switch (kind) {
       case 'online':
-        if (!data && ui.connectedOnce) pushLog({ code: 'server_lost', level: 'warning', local: true });
+        if (!data && ui.connectedOnce && !ctl.ended) pushLog({ code: 'server_lost', level: 'warning', local: true });
         if (data && ui.staleSince && ui.connectedOnce) pushLog({ code: 'server_back', level: 'info', local: true });
         if (data) ui.connectedOnce = true;
         ui.staleSince = data ? null : Date.now();
@@ -252,7 +252,11 @@
     renderPage();
   }
 
-  ctl.onRender(() => renderBanner());
+  // 프로그램 종료면 영상도 끈다 (연결을 닫아 다음 상태가 오지 않는다)
+  ctl.onRender(() => {
+    renderBanner();
+    if (ctl.ended) renderCams();
+  });
 
   // ---------- 윗판 ----------
 

@@ -10,8 +10,8 @@
   const $ = (id) => document.getElementById(id);
 
   const DEVICE_ORDER = ['conveyor', 'arm', 'leader'];
-  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', shutdown: 'amber', unknown: 'amber' };
-  const BLINKING = ['connecting', 'starting', 'stopping', 'homing', 'shutdown'];
+  const LAMP = { running: 'green', estop: 'red', connecting: 'amber', starting: 'amber', stopping: 'amber', homing: 'amber', unknown: 'amber' };
+  const BLINKING = ['connecting', 'starting', 'stopping', 'homing'];
   // 로그 버튼의 빨간 점을 켜는 기록. 불량 검출은 정상 공정에서 늘 생기는 일이라 통계로 보고 점은 켜지 않는다
   const NOTIFY_LEVELS = ['warning', 'alarm'];
   const NOTIFY_SKIP = ['defect_detected'];
@@ -34,7 +34,7 @@
     ended: $('ended'),
   };
 
-  const ui = { busy: new Set(), notes: {}, exiting: false, ended: false, exitTimer: 0, connectedOnce: false };
+  const ui = { busy: new Set(), notes: {}, ended: false, connectedOnce: false };
   const jointCells = {};
   let deviceKeys = {};
   let deviceSig = '';
@@ -49,6 +49,7 @@
   store.subscribe((kind, data) => {
     switch (kind) {
       case 'online':
+        if (ui.ended) break; // 프로그램 종료로 이 HMI가 연결을 닫았다
         if (ui.connectedOnce) addLog({ code: data ? 'server_back' : 'server_lost', level: data ? 'info' : 'warning', at: new Date().toISOString() });
         if (data) ui.connectedOnce = true;
         render();
@@ -75,9 +76,6 @@
       case 'frame':
         camera.pushFrame(data);
         break;
-      case 'shutdown_complete':
-        finishExit();
-        break;
       default:
         break;
     }
@@ -85,9 +83,10 @@
 
   // ---------- 그리기 ----------
 
-  // connecting · offline · estop · unknown · unreported(서버가 라인 상태를 보내지 않음) · stopped · starting · running · stopping · homing
+  // connecting · offline · estop · unknown · unreported(서버가 라인 상태를 보내지 않음) · stopped · starting · running · stopping · homing ·
+  // shutdown(프로그램 종료로 이 HMI를 닫음)
   function phase() {
-    if (ui.exiting) return 'shutdown';
+    if (ui.ended) return 'shutdown';
     return store.linePhase();
   }
 
@@ -168,7 +167,7 @@
     });
     setNote(el.modeNote, ui.notes.mode);
 
-    el.exit.disabled = ui.exiting;
+    el.exit.disabled = ui.ended;
     setNote(el.exitNote, ui.notes.exit);
   }
 
@@ -180,7 +179,7 @@
     el.cameraEmpty.hidden = streaming;
     el.cameraOff.hidden = !streaming || src.transport === 'local'; // 이 PC 카메라는 서버가 켜고 끄지 않는다
     el.cameraOff.disabled = busy;
-    el.camera.disabled = !online() || !st || busy || ui.exiting;
+    el.camera.disabled = !online() || !st || busy || ui.ended;
     el.cameraLabel.textContent = t(busy ? 'camera.connecting' : 'camera.connect');
     setNote(el.cameraNote, ui.notes.camera);
     sim.setLine(!!st && st.line === 'running', st && st.cycle ? st.cycle.stage : null);
@@ -363,13 +362,16 @@
     });
   }
 
+  // 프로그램 종료: 이 HMI만 끝낸다 (사용자 2026-10-16). 서버에는 아무것도 보내지 않아 라인과 장비는 그대로다 —
+  // 장비를 멈추는 것은 정지 키(ProgramStop)와 긴급정지다. 서버 연결을 닫고, 브라우저는 스크립트가 연 창만 닫을 수 있어 종료 화면을 남긴다
   function finishExit() {
     if (ui.ended) return;
-    clearTimeout(ui.exitTimer);
     ui.ended = true;
     camera.set(null);
     setLogOpen(false);
-    el.ended.hidden = false; // 브라우저는 스크립트가 연 창만 닫을 수 있어 종료 화면을 남긴다
+    store.stop();
+    el.ended.hidden = false;
+    render();
   }
 
   el.estop.addEventListener('click', () => {
@@ -427,18 +429,7 @@
   }, true);
 
   el.exit.addEventListener('click', async () => {
-    if (!(await confirmDialog('exit'))) return;
-    ui.exiting = true;
-    delete ui.notes.exit;
-    render();
-    try {
-      await api.shutdown();
-      ui.exitTimer = setTimeout(finishExit, 5000); // 완료 알림이 오지 않아도 5초 뒤에는 닫는다
-    } catch (err) {
-      ui.exiting = false;
-      ui.notes.exit = { text: errorText(err), kind: 'error' };
-      render();
-    }
+    if (await confirmDialog('exit')) finishExit();
   });
 
   // ---------- 시작 ----------

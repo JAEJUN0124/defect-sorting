@@ -11,21 +11,22 @@
   const DEFAULTS = {
     version: '1.0',
     // HMI 명령 → 서버 명령 이름 (Command/@name). null이면 보내지 않고 "서버 규약에 없는 명령"으로 알린다.
-    // v1.0에 있는 것: EmergencyStop · ProgramStart · ProgramStop · Home · SetMode. 나머지는 요청안 이름 (docs/xml-protocol.md 4.2)
+    // v1.0에 있는 것: EmergencyStop · ProgramStart · ProgramStop · Home · SetMode · EmergencyStopRelease(회신 2026-10-16에 더해짐).
+    // 카메라는 요청안 이름 (docs/xml-protocol.md 4.2). 프로그램 종료는 HMI만 닫아 서버 명령이 없다 (사용자 2026-10-16)
     commands: {
       estop: 'EmergencyStop',
       start: 'ProgramStart',
-      shutdown: 'ProgramStop', // 프로그램 종료(F-03)로 가정 (사용자 2026-10-14)
+      stop: 'ProgramStop', // 가동 중 정지 — 서버 담당 회신: ProgramStop은 컨베이어·로봇팔 정지 요청 (2026-10-16)
       home: 'Home', // 원점 복귀
       mode: 'SetMode',
       release: 'EmergencyStopRelease',
-      stop: 'Stop',
       cameraStart: 'CameraStart',
       cameraStop: 'CameraStop',
     },
     modeValues: { auto: 'Auto', manual: 'Manual' },
     // 원점 복귀(Home) 때 HMI가 저장한 원점 각도를 <Motors>로 함께 보낸다 (원점은 HMI가 가진다).
-    // 서버 v1.0은 Command 안에 하위 요소를 받지 않아 InvalidCommand로 거절한다 — false면 v1.0처럼 이름만 보낸다
+    // 회신(2026-10-16) 뒤 서버는 받아서 모터 1~6·숫자·단위(deg만)를 검사하고, 맞지 않으면 InvalidAngles로 거절한다.
+    // 그 전 v1.0 서버는 Command 안에 하위 요소를 받지 않아 InvalidCommand로 거절했다 — false면 이름만 보낸다
     homePose: true,
     // v1.0의 RobotArm/Motors 각도가 어느 팔의 것인지: 'leader'(리더암, 서버 담당 답 2026-10-14) · 'arm'(로봇팔)
     motorsAre: 'leader',
@@ -226,7 +227,8 @@
     return [{ type: 'event', data: ctx.event({ code: 'server_protocol_error', level: 'warning', params: { code: code || '?' }, at }) }];
   }
 
-  // 요청안: 이벤트 하나 (docs/xml-protocol.md 4.3). 원점 복귀·종료를 마친 이벤트는 완료 알림으로도 넘긴다
+  // 요청안: 이벤트 하나 (docs/xml-protocol.md 4.3). 원점 복귀를 마친 이벤트는 완료 알림으로도 넘긴다.
+  // 이벤트는 접속한 모든 HMI에 가므로 화면을 바꾸는 데 쓰지 않는다 (서버 담당 회신 2026-10-16)
   function decodeEvent(msg, at, ctx) {
     const X_ = X();
     const e = X_.child(msg, 'Event');
@@ -240,7 +242,6 @@
     if (!evt) return [];
     const out = [{ type: 'event', data: evt }];
     if (evt.code === 'home_completed') out.push({ type: 'home_complete', data: {} });
-    if (evt.code === 'shutdown_completed') out.push({ type: 'shutdown_complete', data: {} });
     return out;
   }
 

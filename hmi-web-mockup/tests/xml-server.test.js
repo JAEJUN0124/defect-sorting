@@ -72,11 +72,25 @@ test('시험용 XML 서버 v1.0: 접속 직후 상태 · 조회 · 명령 받음
   c.ws.send(cmd('hmi01-auto-001', '<Command name="SetMode" mode="Auto" />'));
   const ok = X.child(await c.next(type('Reply', 'hmi01-auto-001')), 'Reply');
   assert.deepEqual([ok.attrs.command, ok.attrs.result, ok.attrs.code, ok.attrs.executed, ok.attrs.mode], ['SetMode', 'Received', 'ReceiptOnly', 'false', 'Auto']);
-  const rejected = async (id, inner) => X.child(await (c.ws.send(cmd(id, inner)), c.next(type('Reply', id))), 'Reply').attrs.code;
-  assert.equal(await rejected('m2', '<Command name="SetMode" mode="Toggle" />'), 'InvalidMode');
-  assert.equal(await rejected('m3', '<Command name="Stop" />'), 'UnknownCommand');
-  assert.equal(await rejected('m4', '<Command name="Home"><Motors /></Command>'), 'InvalidCommand'); // v1.0은 하위 요소를 받지 않는다
-  assert.equal(await rejected('m5', '<Command name="Home" extra="1" />'), 'InvalidCommand');
+  const codeOf = async (id, inner) => X.child(await (c.ws.send(cmd(id, inner)), c.next(type('Reply', id))), 'Reply').attrs.code;
+  assert.equal(await codeOf('m2', '<Command name="SetMode" mode="Toggle" />'), 'InvalidMode');
+  assert.equal(await codeOf('m3', '<Command name="Stop" />'), 'UnknownCommand'); // 별칭은 아직 제안 단계 (서버 담당 회신)
+  assert.equal(await codeOf('m5', '<Command name="Home" extra="1" />'), 'InvalidCommand');
+  // 회신(2026-10-16)으로 더해진 것: 긴급정지 해제·장비 정지는 받음 확인, 속성 검사가 이름 검사보다 먼저
+  assert.equal(await codeOf('m6', '<Command name="EmergencyStopRelease" />'), 'ReceiptOnly');
+  assert.equal(await codeOf('m7', '<Command name="ProgramStop" />'), 'ReceiptOnly');
+  assert.equal(await codeOf('m8', '<Command name="CameraStart" camera="top" />'), 'InvalidCommand');
+  assert.equal(await codeOf('m9', '<Command name="CameraStart" />'), 'UnknownCommand');
+  // 원점 각도(Home/Motors): 모터 1~6이 한 번씩, 숫자, deg만. 맞으면 받음 확인뿐(장비는 움직이지 않음), 틀리면 InvalidAngles
+  const motors = (f) => '<Motors>' + [1, 2, 3, 4, 5, 6].map((i) => `<Motor id="${i}">${f(i)}</Motor>`).join('') + '</Motors>';
+  const deg = (i) => `<Angle unit="deg">${i * 10 - 25.5}</Angle>`;
+  const home = X.child(await (c.ws.send(cmd('h1', `<Command name="Home">${motors(deg)}</Command>`)), c.next(type('Reply', 'h1'))), 'Reply');
+  assert.deepEqual([home.attrs.result, home.attrs.code, home.attrs.executed], ['Received', 'ReceiptOnly', 'false']);
+  assert.equal(await codeOf('h2', '<Command name="Home"><Motors /></Command>'), 'InvalidAngles');
+  assert.equal(await codeOf('h3', `<Command name="Home">${motors((i) => (i === 6 ? '<Angle unit="percent">40</Angle>' : deg(i)))}</Command>`), 'InvalidAngles');
+  assert.equal(await codeOf('h4', `<Command name="Home">${motors((i) => (i === 3 ? '<Angle unit="deg">NaN</Angle>' : deg(i)))}</Command>`), 'InvalidAngles');
+  assert.equal(await codeOf('h5', `<Command name="Home">${motors(deg).replace('id="2"', 'id="1"')}</Command>`), 'InvalidAngles');
+  assert.equal(await codeOf('h6', '<Command name="Home" />'), 'ReceiptOnly'); // 각도 없는 원점 복귀도 지금은 받음 확인
   const errorCode = async (text, id) => { c.ws.send(text); return X.child(await c.next(type('Error', id)), 'Error').attrs.code; };
   assert.equal(await errorCode('<Message version="1.0" type="Command"><Command name="Home" /></Message>'), 'MissingRequestId');
   assert.equal(await errorCode('<Message version="1.0" type="Hello" id="q1" />', 'q1'), 'UnknownType');
@@ -92,11 +106,17 @@ test('시험용 XML 서버 요청안(--extended): 라인 상태가 바뀌고, �
   const c = await connect(url);
   const line = (m) => X.child(X.child(m, 'Status'), 'Line').attrs;
   assert.equal(line(await c.next(type('Status'))).state, 'Stopped');
+  const event = (code) => (m) => m.attrs.type === 'Event' && X.child(m, 'Event').attrs.code === code;
+  const requestIdOf = (m) => (X.children(X.child(m, 'Event'), 'Param').find((p) => p.attrs.name === 'requestId') || {}).text;
   c.ws.send(cmd('s1', '<Command name="ProgramStart" />'));
   assert.equal(X.child(await c.next(type('Reply', 's1')), 'Reply').attrs.executed, 'true');
   assert.ok(await c.next((m) => m.attrs.type === 'Status' && line(m).state === 'Running'));
+  // ProgramStop은 장비 정지 요청 — 라인이 멈추고, 완료 이벤트에 요청 id가 실린다 (서버 담당 회신의 제안)
+  c.ws.send(cmd('p1', '<Command name="ProgramStop" />'));
+  assert.equal(X.child(await c.next(type('Reply', 'p1')), 'Reply').attrs.executed, 'true');
+  assert.equal(requestIdOf(await c.next(event('LineStopped'))), 'p1');
   c.ws.send(cmd('e1', '<Command name="EmergencyStop" />'));
-  assert.ok(await c.next((m) => m.attrs.type === 'Event' && X.child(m, 'Event').attrs.code === 'EstopPressed'));
+  assert.ok(await c.next(event('EstopPressed')));
   c.ws.send(cmd('h1', '<Command name="Home" />'));
   assert.equal(X.child(await c.next(type('Reply', 'h1')), 'Reply').attrs.code, 'EstopActive');
   c.ws.send(cmd('r1', '<Command name="EmergencyStopRelease" />'));
@@ -106,6 +126,6 @@ test('시험용 XML 서버 요청안(--extended): 라인 상태가 바뀌고, �
   const motors = [1, 2, 3, 4, 5, 6].map((i) => `<Motor id="${i}"><Angle unit="deg">${i}</Angle></Motor>`).join('');
   c.ws.send(cmd('h3', `<Command name="Home"><Motors>${motors}</Motors></Command>`));
   assert.equal(X.child(await c.next(type('Reply', 'h3')), 'Reply').attrs.result, 'Received');
-  assert.ok(await c.next((m) => m.attrs.type === 'Event' && X.child(m, 'Event').attrs.code === 'HomeCompleted', 4000));
+  assert.equal(requestIdOf(await c.next(event('HomeCompleted'), 4000)), 'h3');
   c.ws.close();
 });

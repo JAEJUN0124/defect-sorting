@@ -18,7 +18,7 @@
     mode: ['PUT', '/mode'],
     cameraStart: ['POST', '/camera/start'],
     cameraStop: ['POST', '/camera/stop'],
-    shutdown: ['POST', '/system/shutdown'],
+    // 프로그램 종료는 HMI만 닫아 서버 명령이 없다 (사용자 2026-10-16)
   };
   // SSE에서 이름 붙은 이벤트로 올 수 있는 메시지 종류
   const SSE_TYPES = ['status', 'state', 'inspection', 'result', 'event', 'log', 'alarm', 'joints', 'telemetry', 'heartbeat', 'ping',

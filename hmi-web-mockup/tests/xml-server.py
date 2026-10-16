@@ -3,17 +3,22 @@
 HMI가 실제 브라우저에서 XML 규약으로 연결·상태·명령·답을 주고받는지 확인하는 개발용 시험 고정물이다. 실제 서버(서버 담당 몫, .NET)가 아니다.
 표준 라이브러리만 쓴다 (WebSocket도 직접 구현).
 
-v1.0과 같게 하는 것:
+v1.0과 같게 하는 것 (서버 담당 회신 docs/hmi-server-reply-1.md, 2026-10-16에 받음 — 그때 서버에 더한 것까지):
   - 주소 ws://<호스트>:<포트>/ws/hmi, 텍스트 메시지 한 개에 XML 문서 한 개 (UTF-8)
   - 접속 직후 상태 한 번, 그 뒤 간격(--interval-ms, 기본 1000)마다 상태 (자동 전송에는 id 없음)
   - GetStatus · Ping(→ Pong) · Command (id 필수). 명령은 형식만 검증하고 Reply(받음 확인, executed="false")
-  - 명령 이름 EmergencyStop · ProgramStart · ProgramStop · Home · SetMode(mode Auto|Manual), 오류 InvalidCommand · UnknownCommand · InvalidMode
+  - 명령 이름 EmergencyStop · ProgramStart · ProgramStop(장비 정지 요청) · Home · SetMode(mode Auto|Manual) · EmergencyStopRelease,
+    오류 InvalidCommand · UnknownCommand · InvalidMode · InvalidAngles
+  - 속성 검사가 명령 이름 검사보다 먼저다: CameraStart camera="top"은 InvalidCommand, camera가 없으면 UnknownCommand
+  - Home은 원점 각도 <Motors>를 받아 검사한다 (모터 1~6이 한 번씩, Angle 하나, 유한한 숫자, unit="deg"만). 틀리면 InvalidAngles.
+    각도가 없는 Home도 받음 확인
   - 오류(Error) InvalidXml · InvalidRequest · UnsupportedVersion · UnknownType · MissingRequestId, DTD 거절
   - 바이너리 메시지는 닫기 코드 1003, 16KiB 넘는 요청은 1009
   - --simulation: 연결·가동 true, 각도 -45~45도, 2초마다 검사 1개(5번째마다 불량)
 
 --extended: v1.0 다음으로 HMI가 요청한 모양(docs/xml-protocol.md 4장)도 낸다 — 라인 상태(Line)·리더암 연결(LeaderArm)·이벤트(Event)·
-  판정(Inspection)·명령 실행(executed="true")·상태에 따른 거절 코드·원점 각도가 붙은 Home·EmergencyStopRelease·Stop·CameraStart·CameraStop
+  판정(Inspection)·명령 실행(executed="true")·상태에 따른 거절 코드·Stop(ProgramStop의 별칭, 회신의 제안)·CameraStart·CameraStop.
+  완료 이벤트(HomeCompleted · LineStopped)에는 요청 id를 <Param name="requestId">로 싣는다 (회신의 제안)
 
 실행: python hmi-web-mockup/tests/xml-server.py 5080 --simulation
 그다음 http://localhost:5173/?mock=0&ws=ws://localhost:5080/ws/hmi
@@ -35,8 +40,8 @@ from xml.sax.saxutils import escape, quoteattr
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_MESSAGE = 16 * 1024
-V10_COMMANDS = {"EmergencyStop", "ProgramStart", "ProgramStop", "Home", "SetMode"}
-EXT_COMMANDS = {"EmergencyStopRelease", "Stop", "CameraStart", "CameraStop"}
+V10_COMMANDS = {"EmergencyStop", "ProgramStart", "ProgramStop", "Home", "SetMode", "EmergencyStopRelease"}
+EXT_COMMANDS = {"Stop", "CameraStart", "CameraStop"}
 JOINTS = 6
 
 ARGS = None
@@ -227,6 +232,36 @@ def handle_text(client, text):
     handle_command(client, root, req_id)
 
 
+def home_angles(motors):
+    """Home의 <Motors> 검사 (서버 담당 회신 3장): 모터 1~6이 한 번씩(순서가 아니라 id로), 모터마다 Angle 하나,
+    유한한 숫자(NaN·무한대·빈 값은 거절), unit="deg"만. 맞으면 ({id: 각도}, None), 아니면 (None, 거절 이유)"""
+    angles = {}
+    for m in motors:
+        if m.tag != "Motor":
+            return None, "Motors may contain only Motor elements."
+        try:
+            mid = int(m.get("id"))
+        except (TypeError, ValueError):
+            return None, "Motor id must be 1 to 6."
+        if not 1 <= mid <= JOINTS or mid in angles:
+            return None, "Each motor id 1 to 6 must appear exactly once."
+        found = m.findall("Angle")
+        if len(found) != 1:
+            return None, f"Motor {mid} needs exactly one Angle."
+        if found[0].get("unit") != "deg":
+            return None, "Only unit deg is allowed."
+        try:
+            value = float((found[0].text or "").strip())
+        except ValueError:
+            return None, f"Motor {mid} angle is not a number."
+        if not math.isfinite(value):
+            return None, f"Motor {mid} angle is not finite."
+        angles[mid] = value
+    if sorted(angles) != list(range(1, JOINTS + 1)):
+        return None, "Each motor id 1 to 6 must appear exactly once."
+    return angles, None
+
+
 def handle_command(client, root, req_id):
     cmds = list(root)
     if len(cmds) != 1 or cmds[0].tag != "Command" or (root.text or "").strip():
@@ -237,31 +272,41 @@ def handle_command(client, root, req_id):
     if not name:
         client.send_text(reply_xml(req_id, "Rejected", "InvalidCommand", detail="Command requires a name."))
         return
+    # 속성 검사가 명령 이름 검사보다 먼저다 (서버 담당 회신 2장) — CameraStart camera="top"은 InvalidCommand
+    allowed = {"name"} | ({"mode"} if name == "SetMode" else set()) | ({"camera"} if ARGS.extended and name.startswith("Camera") else set())
+    if set(cmd.attrib) - allowed:
+        client.send_text(reply_xml(req_id, "Rejected", "InvalidCommand", command=name, detail="Unexpected attribute in Command."))
+        return
     known = V10_COMMANDS | (EXT_COMMANDS if ARGS.extended else set())
     if name not in known:
         client.send_text(reply_xml(req_id, "Rejected", "UnknownCommand", command=name, detail=f"Unknown command {name}."))
         return
-    allowed = {"name"} | ({"mode"} if name == "SetMode" else set()) | ({"camera"} if ARGS.extended and name.startswith("Camera") else set())
-    # v1.0은 Command 안에 하위 요소를 받지 않는다. 요청안(--extended)은 Home에 <Motors>를 받는다
-    children_ok = len(cmd) == 0 or (ARGS.extended and name == "Home" and [c.tag for c in cmd] == ["Motors"])
-    if set(cmd.attrib) - allowed or not children_ok or (cmd.text or "").strip():
-        client.send_text(reply_xml(req_id, "Rejected", "InvalidCommand", command=name, detail="Unexpected attribute, element or text in Command."))
+    # Command 안의 하위 요소는 Home의 <Motors> 하나만 받는다
+    children_ok = len(cmd) == 0 or (name == "Home" and [c.tag for c in cmd] == ["Motors"])
+    if not children_ok or (cmd.text or "").strip():
+        client.send_text(reply_xml(req_id, "Rejected", "InvalidCommand", command=name, detail="Unexpected element or text in Command."))
         return
     mode = cmd.get("mode")
     if name == "SetMode" and mode not in ("Auto", "Manual"):
         client.send_text(reply_xml(req_id, "Rejected", "InvalidMode", command=name, detail="SetMode requires mode Auto or Manual."))
         return
+    angles = None
+    if name == "Home" and len(cmd):
+        angles, problem = home_angles(cmd.find("Motors"))
+        if problem:
+            client.send_text(reply_xml(req_id, "Rejected", "InvalidAngles", command=name, detail=problem))
+            return
     if not ARGS.extended:
         client.send_text(reply_xml(req_id, "Received", "ReceiptOnly", command=name, mode=mode,
                                    detail="Command validated and received. No equipment action was executed or queued."))
-        print(f"[cmd] {client.addr[0]} {name}{' ' + mode if mode else ''} (receipt only)", flush=True)
+        print(f"[cmd] {client.addr[0]} {name}{' ' + mode if mode else ''}{' ' + str(angles) if angles else ''} (receipt only)", flush=True)
         return
-    execute(client, req_id, name, cmd, mode)
+    execute(client, req_id, name, cmd, mode, angles)
 
 
 # ---------- 요청안(--extended): 명령을 실제로 해 보는 흉내 ----------
 
-def execute(client, req_id, name, cmd, mode):
+def execute(client, req_id, name, cmd, mode, angles):
     def reject(code, detail):
         client.send_text(reply_xml(req_id, "Rejected", code, command=name, mode=mode, detail=detail))
 
@@ -285,15 +330,12 @@ def execute(client, req_id, name, cmd, mode):
                 return reject("HomeRequired", "Return to home before starting in Auto.")
             S.update(line="Running", started_at=now_iso())
             events.append(("LineStarted", "Info", {}))
-        elif name == "Stop":
+        elif name in ("ProgramStop", "Stop"):
+            # ProgramStop은 컨베이어·로봇팔 정지 요청이고, Stop은 그 별칭 제안이다 (서버 담당 회신 1장)
             if S["line"] != "Running":
                 return reject("InvalidState", "Line is not running.")
             S.update(line="Stopped", started_at=None)
-            events.append(("LineStopped", "Info", {}))
-        elif name == "ProgramStop":
-            S.update(line="Stopped", started_at=None, cameras={k: False for k in S["cameras"]})
-            events.append(("ShutdownStarted", "Info", {}))
-            threading.Timer(1.0, lambda: broadcast(event_xml("ShutdownCompleted"))).start()
+            events.append(("LineStopped", "Info", {"requestId": req_id}))
         elif name == "SetMode":
             if S["estop"]:
                 return reject("EstopActive", "Release the emergency stop first.")
@@ -309,18 +351,8 @@ def execute(client, req_id, name, cmd, mode):
                 return reject("NotAuto", "Return to home in Auto mode.")
             if S["line"] != "Stopped":
                 return reject("NotStopped", "Stop the line first.")
-            motors = cmd.find("Motors")
-            if motors is None:
+            if angles is None:  # 각도의 형식은 handle_command가 이미 검사했다 (InvalidAngles)
                 return reject("HomeNotSet", "Home requires the angles saved by the HMI.")
-            angles = {}
-            for m in motors.findall("Motor"):
-                a = m.find("Angle")
-                try:
-                    angles[int(m.get("id"))] = float(a.text)
-                except (TypeError, ValueError, AttributeError):
-                    pass
-            if sorted(angles) != list(range(1, JOINTS + 1)):
-                return reject("InvalidAngles", "Home needs six angles.")
             S["line"] = "Homing"
             events.append(("HomeStarted", "Info", {}))
             print(f"[home] target {angles}", flush=True)
@@ -328,7 +360,7 @@ def execute(client, req_id, name, cmd, mode):
             def done():
                 with lock:
                     S.update(line="Stopped", home_required=False)
-                broadcast(event_xml("HomeCompleted"))
+                broadcast(event_xml("HomeCompleted", requestId=req_id))
                 broadcast(status_xml())
             threading.Timer(1.5, done).start()
         elif name in ("CameraStart", "CameraStop"):

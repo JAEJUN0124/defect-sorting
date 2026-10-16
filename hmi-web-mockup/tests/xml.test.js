@@ -221,14 +221,16 @@ test('요청안(v1.0 다음): 라인 상태·고장·단계·리더암·카메�
   assert.equal(list[1].data.source, 'arm');
 });
 
-test('요청안: 이벤트(원점 복귀·종료 완료 알림 포함)와 부품 하나의 판정', () => {
+test('요청안: 이벤트(원점 복귀 완료 알림 포함)와 부품 하나의 판정', () => {
   const a = make();
-  const ev = a.message('<Message version="1.0" type="Event" timestamp="2026-10-14T01:00:00Z"><Event code="HomeCompleted" level="Info" seq="5" /></Message>');
+  const ev = a.message('<Message version="1.0" type="Event" timestamp="2026-10-14T01:00:00Z"><Event code="HomeCompleted" level="Info" seq="5"><Param name="requestId">hmi-k3f9-home-7</Param></Event></Message>');
   assert.deepEqual(ev.map((m) => m.type), ['event', 'home_complete']);
   assert.equal(ev[0].data.code, 'home_completed');
   assert.equal(ev[0].data.seq, 5);
+  assert.equal(ev[0].data.params.requestId, 'hmi-k3f9-home-7'); // 완료 이벤트의 요청 id (서버 담당 회신의 제안)
+  // 이벤트는 접속한 모든 HMI에 가므로 화면을 바꾸지 않는다 — 종료 완료는 로그로만 (프로그램 종료는 HMI만 닫는다)
   const down = a.message('<Message version="1.0" type="Event"><Event code="ShutdownCompleted" level="Info" /></Message>');
-  assert.deepEqual(down.map((m) => m.type), ['event', 'shutdown_complete']);
+  assert.deepEqual(down.map((m) => m.type), ['event']);
   const dev = a.message('<Message version="1.0" type="Event"><Event code="DeviceDisconnected" level="Warning"><Param name="device">conveyor</Param></Event></Message>');
   assert.deepEqual(dev[0].data.params, { device: 'conveyor' });
   assert.equal(dev[0].data.level, 'warning');
@@ -243,7 +245,9 @@ test('보내기: v1.0 명령 이름 · 모드 값 · 요청', () => {
   const c = (name, body) => P.command(name, body, 'id-1');
   assert.equal(c('estop').text, '<Message version="1.0" type="Command" id="id-1"><Command name="EmergencyStop" /></Message>');
   assert.equal(c('start').command, 'ProgramStart');
-  assert.equal(c('shutdown').command, 'ProgramStop'); // 프로그램 종료로 가정
+  // 정지 키 = 장비 정지 요청 ProgramStop (서버 담당 회신 2026-10-16). 프로그램 종료는 HMI만 닫아 보낼 명령이 없다 (사용자 2026-10-16)
+  assert.equal(c('stop').text, '<Message version="1.0" type="Command" id="id-1"><Command name="ProgramStop" /></Message>');
+  assert.equal(c('shutdown'), null);
   const mode = c('mode', { mode: 'manual' });
   assert.equal(mode.text, '<Message version="1.0" type="Command" id="id-1"><Command name="SetMode" mode="Manual" /></Message>');
   assert.deepEqual([mode.command, mode.mode], ['SetMode', 'Manual']);
@@ -289,12 +293,12 @@ class FakeWebSocket {
 FakeWebSocket.all = [];
 globalThis.WebSocket = FakeWebSocket;
 
-function xmlApi(xml) {
+function xmlApi(xml, wsUrl) {
   FakeWebSocket.all = [];
   window.HMI_CONFIG = {
     useMock: false,
     apiBase: 'http://h/api',
-    wsUrl: 'ws://h:5080/ws/hmi',
+    wsUrl: wsUrl || 'ws://h:5080/ws/hmi',
     server: { format: 'xml', push: 'sse', xml: Object.assign({ replyTimeoutMs: 80 }, xml) },
     cameras: { primary: 'auto', bboxFormat: 'xywh' },
   };
@@ -338,7 +342,7 @@ test('api.js(XML): 거절·오류·보내지 않는 명령·끊김', async () =>
   const mode = api.setMode('auto');
   ws.receive(`<Message version="1.0" type="Reply" id="${idOf(0)}"><Reply command="SetMode" result="Rejected" code="InvalidMode" executed="false" /></Message>`);
   await assert.rejects(mode, (e) => e instanceof api.ApiError && e.code === 'INVALID_MODE');
-  const stop = api.shutdown();
+  const stop = api.stop();
   assert.equal(X.child(X.parse(ws.sent[1]), 'Command').attrs.name, 'ProgramStop');
   ws.receive(`<Message version="1.0" type="Error" id="${idOf(1)}"><Error code="UnsupportedVersion">nope</Error></Message>`);
   await assert.rejects(stop, (e) => e.code === 'XML_UNSUPPORTED_VERSION' && e.serverMessage === 'nope');
@@ -369,4 +373,28 @@ test('api.js(XML): 상태 묻기(GetStatus)는 같은 id의 Status로 답을 받
   // 상태가 끊겨 다시 붙기: 웹소켓을 닫으면 transport가 다시 연다
   api.reconnect();
   assert.equal(ws.closed, true);
+});
+
+// 서버 담당 회신(2026-10-16): 거절 답에는 mode가, 형식이 틀린 명령의 답에는 command가 없을 수 있다.
+// id로 찾고 답에 있는 값만 비교한다. id 없는 Error는 어느 버튼의 요청도 끝내지 않는다
+test('api.js(XML): 거절 답은 id로 찾고 있는 값만 비교한다 (빠진 명령 이름은 보낸 이름으로)', async () => {
+  const { api, ws, idOf } = xmlApi();
+  const cam = api.startCamera('top');
+  ws.receive(`<Message version="1.0" type="Reply" id="${idOf(0)}"><Reply result="Rejected" code="InvalidCommand" executed="false" /></Message>`);
+  await assert.rejects(cam, (e) => e.code === 'XML_INVALID_COMMAND' && e.details.command === 'CameraStart');
+  const mode = api.setMode('manual');
+  ws.receive(`<Message version="1.0" type="Error"><Error code="InvalidXml">bad</Error></Message>`); // id 없음 — 이 요청을 끝내지 않는다
+  ws.receive(`<Message version="1.0" type="Reply" id="${idOf(1)}"><Reply command="SetMode" result="Rejected" code="NotStopped" executed="false" /></Message>`);
+  await assert.rejects(mode, (e) => e.code === 'NOT_STOPPED');
+});
+
+test('api.js(XML): 연결을 닫으면(프로그램 종료) 다시 붙지 않는다', async () => {
+  const url = 'ws://close-test:5080/ws/hmi'; // 앞 시험들이 다시 붙으며 만드는 웹소켓과 섞이지 않게
+  const { api, ws, closed } = xmlApi(undefined, url);
+  api.close();
+  assert.equal(ws.closed, true);
+  assert.equal(closed(), 1);
+  await new Promise((r) => setTimeout(r, 800)); // transport의 첫 다시 붙기 간격(0.5초)보다 오래
+  assert.equal(FakeWebSocket.all.filter((w) => w.url === url).length, 1);
+  await assert.rejects(api.start(), (e) => e.code === 'NETWORK');
 });
