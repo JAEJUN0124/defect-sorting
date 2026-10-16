@@ -61,18 +61,20 @@ handoff_spec: 1
 - 결정: HMI만이 아니라 이 프로젝트에서 사용자가 맡는 작업을 모두 이 저장소에 둔다.
 - 근거: 사용자 2026-10-12 · HISTORY/2026-10-12-hmi-decisions.md
 
-## D-012 대시보드의 장치 연결 표시는 늘 보인다
-- 범위: 대시보드 화면(`hmi-web-mockup/dashboard.html`)
-- 결정: 대시보드의 장치 연결 상태(서버·컨베이어·로봇팔·리더암·카메라) 표시는 개발 단계가 끝나도 빼지 않고 늘 보인다. 대시보드에 한한 D-008의 예외다.
-- 근거: 사용자 2026-10-12 · HISTORY/2026-10-12-dashboard-device-display.md
-
-## D-013 세 화면은 각각 혼자 쓰는 화면이다
-- 범위: 조작 화면(`hmi-web-mockup/index.html`)·첫 대시보드(`hmi-web-mockup/dashboard.html`)·탭 대시보드(`hmi-web-mockup/dashboard-tabs.html`)
-- 결정: 세 화면은 서로 기대지 않고 하나만 띄워도 라인을 다룰 수 있어야 한다. 그래서 두 대시보드도 조작 화면의 조작(F-01~F-06)을 모두 갖춘다. 다른 사람에게 보여 줄 사본도 화면마다 따로 만든다.
-- 근거: 사용자 2026-10-12 · HISTORY/2026-10-12-standalone-screens.md
-
 ## D-014 원점은 HMI가 저장한다
 - 범위: 원점(F-04)의 저장 위치
 - 결정: 원점 정보는 서버가 아니라 HMI 쪽에 저장한다.
 - 근거: 사용자 2026-10-14 · HISTORY/2026-10-14-home-in-hmi-decision.md
 - 관련 문서: docs/xml-protocol.md
+
+## D-015 프로그램 종료는 HMI 화면만 끝낸다
+- 범위: 프로그램 종료(F-03)
+- 결정: "프로그램 종료"는 HMI 화면만 끝내고 서버에는 아무것도 보내지 않는다. 라인과 장비를 멈추는 것은 정지 키와 긴급정지다.
+- 근거: 사용자 2026-10-16 · HISTORY/2026-10-17-exit-hmi-only-decision.md
+- 관련 문서: docs/xml-protocol.md
+
+## D-016 HMI 화면은 React로 만든 조작 화면 하나다
+- 범위: HMI 화면(`hmi-web-mockup/react/`)
+- 결정: 대시보드는 두지 않고 조작 화면 하나만 둔다. 조작 화면은 React로 만들고, 동작은 React로 옮기기 전 조작 화면과 같게 한다.
+- 근거: 사용자 2026-10-17 · HISTORY/2026-10-17-react-single-screen-decision.md
+- 관련 문서: hmi-web-mockup/README.md
