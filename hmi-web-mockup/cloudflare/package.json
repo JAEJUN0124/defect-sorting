@@ -1,0 +1,15 @@
+{
+  "name": "hmi-cloudflare",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "밖에서 여는 HMI: 화면 파일은 Cloudflare가 내주고 /ws/hmi는 터널로 메인 서버에 넘긴다 (docs/cloudflare.md)",
+  "scripts": {
+    "site": "python ../tools/make-server-bundle.py --dir site",
+    "dev": "npm run site && wrangler dev",
+    "deploy": "npm run site && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.147.0"
+  }
+}

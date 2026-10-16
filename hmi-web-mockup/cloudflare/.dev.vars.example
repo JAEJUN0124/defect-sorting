@@ -1,0 +1,5 @@
+# wrangler dev(이 PC에서 시험)용 값 — 이 파일을 .dev.vars로 복사해서 쓴다. .dev.vars는 저장소에 올리지 않는다
+# 터널 대신 시험용 XML 서버에 붙는다: python hmi-web-mockup/tests/xml-server.py 5080 --simulation
+ORIGIN=http://127.0.0.1:5080
+CF_ACCESS_CLIENT_ID=local-test
+CF_ACCESS_CLIENT_SECRET=local-test

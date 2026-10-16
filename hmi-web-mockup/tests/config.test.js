@@ -1,5 +1,6 @@
 // 설정(js/config.js) 시험 — 실행: node --test "hmi-web-mockup/tests/*.test.js"
-// 메인 서버에 HMI를 올리면(wsUrl 'auto') 화면을 내준 서버의 /ws/hmi에 붙는다. 메인 서버용 묶음(tools/make-server-bundle.py)과 같은 배치로 내주는 개발용 서버(tools/dev-server.py)도 본다.
+// 메인 서버에 HMI를 올리면(wsUrl 'auto') 화면을 내준 서버의 /ws/hmi에 붙는다. 메인 서버용 묶음(tools/make-server-bundle.py)과 그 Cloudflare용 폴더(--dir),
+// 같은 배치로 내주는 개발용 서버(tools/dev-server.py)도 본다.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -74,6 +75,45 @@ test('make-server-bundle.py: wwwroot/에 React 조작 화면과 점검 페이지
 
 // 위 시험이 react/dist를 새로 빌드한 뒤에 돈다 (같은 파일 안의 시험은 차례로 돈다)
 const NO_DIST = !fs.existsSync(path.join(REACT, 'dist', 'index.html')) && 'react/dist 없음 (npm run build 안 함)';
+
+// 폴더 안 파일 목록 (/로 이은 상대 경로)
+const listFiles = (dir) => fs.readdirSync(dir, { recursive: true })
+  .filter((rel) => fs.statSync(path.join(dir, rel)).isFile())
+  .map((rel) => rel.split(path.sep).join('/'))
+  .sort();
+
+test('make-server-bundle.py --dir: wwwroot/ 내용을 폴더에 씀(README 빼고, Cloudflare용) — 다시 쓰면 지난번에만 있던 파일이 없어지고, 묶음이 아닌 것이 든 폴더는 지우지 않음', { skip: (!PY && 'python 없음') || NO_DIST }, () => {
+  const tool = path.join(__dirname, '..', 'tools', 'make-server-bundle.py');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hmi-site-'));
+  const site = path.join(dir, 'site');
+  try {
+    let run = spawnSync(PY, [tool, '--no-build', '--dir', site]);
+    assert.equal(run.status, 0, String(run.stderr));
+    const files = listFiles(site);
+    assert.ok(files.includes('index.html'));
+    assert.ok(files.some((f) => /^assets\/.+\.js$/.test(f)));
+    ['tools/server-check.html', 'tools/devices.html', 'js/config.js', 'js/xml.js', 'css/base.css'].forEach((f) => assert.ok(files.includes(f), f));
+    assert.ok(!files.includes('README-server.md'));
+    assert.ok(!files.some((f) => f.startsWith('tests/') || f.startsWith('react/') || f.endsWith('.py')));
+    // Cloudflare에 올리면 점검 페이지도 같은 주소의 /ws/hmi에 붙는다 (Worker가 터널로 넘김)
+    const cfg = loadConfig('https://hmi.example.net/tools/server-check.html', fs.readFileSync(path.join(site, 'js', 'config.js'), 'utf8'));
+    assert.equal(cfg.useMock, false);
+    assert.equal(cfg.wsUrl, 'wss://hmi.example.net/ws/hmi');
+
+    fs.writeFileSync(path.join(site, 'assets', 'old.js'), '');
+    run = spawnSync(PY, [tool, '--no-build', '--dir', site]);
+    assert.equal(run.status, 0, String(run.stderr));
+    assert.ok(!fs.existsSync(path.join(site, 'assets', 'old.js')));
+
+    fs.writeFileSync(path.join(dir, 'keep.txt'), 'x');
+    run = spawnSync(PY, [tool, '--no-build', '--dir', dir]);
+    assert.notEqual(run.status, 0);
+    assert.ok(fs.existsSync(path.join(dir, 'keep.txt')));
+    assert.ok(fs.existsSync(path.join(site, 'index.html')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('dev-server.py: / 는 React 조작 화면(react/dist), 그 밖은 hmi-web-mockup 파일 (메인 서버 묶음과 같은 배치)', { skip: (!PY && 'python 없음') || NO_DIST }, async (t) => {
   const proc = spawn(PY, [path.join(__dirname, '..', 'tools', 'dev-server.py'), '0'], { stdio: ['ignore', 'pipe', 'pipe'] });

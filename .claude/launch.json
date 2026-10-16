@@ -48,6 +48,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["hmi-web-mockup/tests/xml-server.py", "5081", "--simulation", "--extended"],
       "port": 5081
+    },
+    {
+      "name": "hmi-cloudflare-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "hmi-web-mockup/cloudflare", "run", "dev"],
+      "port": 8787
     }
   ]
 }

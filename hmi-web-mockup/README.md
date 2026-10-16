@@ -70,6 +70,19 @@ python hmi-web-mockup/tools/make-server-bundle.py hmi-main-server.zip
 - 조작 화면은 주소 뒤에 아무것도 붙이지 않아도 화면을 내준 서버의 `/ws/hmi`에 붙습니다 (https면 `wss`). 점검 페이지용 `js/config.js`도 메인 서버용으로 바뀝니다(`useMock: false`, `wsUrl: 'auto'`).
 - 이 구성을 시험용 서버로 흉내 내려면 빌드한 뒤 `python hmi-web-mockup/tests/xml-server.py 5091 --simulation --static hmi-web-mockup/react/dist`를 띄우고 `http://localhost:5091/`을 엽니다 (미리보기 설정 `xml-server-hosting`).
 
+### 밖에서 열기 (Cloudflare)
+
+장비망 밖에서는 `https://hmi.hypefree.net/`으로 엽니다. 화면 파일은 Cloudflare Worker가 내주고, `/ws/hmi` 웹소켓만 Cloudflare Tunnel을 거쳐 메인 서버로 갑니다. 앞에는 Cloudflare Access(허락한 이메일만)가 있습니다. 서버 코드는 바꾸지 않습니다.
+구조, 대시보드 설정, 안 될 때는 [docs/cloudflare.md](../docs/cloudflare.md)에 있습니다.
+
+```bash
+npm --prefix hmi-web-mockup/cloudflare run deploy
+```
+
+- 위 명령이 React 빌드 → `cloudflare/site/`(메인 서버 묶음의 `wwwroot/`와 같은 파일, `make-server-bundle.py --dir`) → `wrangler deploy`를 한 번에 합니다. 화면이나 `js/`를 고친 뒤에도 이것만 다시 합니다.
+- 처음 한 번은 `npm --prefix hmi-web-mockup/cloudflare install`, `hmi-web-mockup/cloudflare`에서 `npx wrangler login`(PowerShell은 `npx.cmd`), 첫 배포 뒤 `python hmi-web-mockup/cloudflare/set-token.py`로 서비스 토큰을 넣습니다 (값을 터널 주소에 먼저 시험한 뒤 Worker 비밀값으로 넣음).
+- 이 PC에서 시험: `cloudflare/.dev.vars.example`을 `.dev.vars`로 복사하고, 시험용 XML 서버(`xml-server`)와 `npm --prefix hmi-web-mockup/cloudflare run dev`(미리보기 설정 `hmi-cloudflare-dev`)를 띄워 `http://localhost:8787/`을 엽니다.
+
 주소 뒤에 붙이는 설정 (설정 파일보다 우선)
 
 | 붙이는 것 | 뜻 |
@@ -150,7 +163,8 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 
 | 시험 | 내용 |
 |---|---|
-| `tests/config.test.js` | 메인 서버에 올렸을 때의 서버 주소(`wsUrl: 'auto'`), 메인 서버용 묶음(React 빌드 포함 — `react/`에서 `npm install`을 안 했으면 건너뜀), 개발용 서버의 배치 |
+| `tests/config.test.js` | 메인 서버에 올렸을 때의 서버 주소(`wsUrl: 'auto'`), 메인 서버용 묶음(React 빌드 포함 — `react/`에서 `npm install`을 안 했으면 건너뜀)과 Cloudflare용 폴더(`--dir`, 다시 쓸 때 지난 파일 지우기·남의 폴더는 안 지움), 개발용 서버의 배치 |
+| `tests/cloudflare.test.js` | 밖에서 여는 HMI: Worker가 `/ws/hmi` 웹소켓만 서비스 토큰을 붙여 터널로 넘기고(사람의 쿠키는 안 넘김) 나머지는 화면 파일로 돌리는지, 토큰이 비면 500, 배포 설정이 `*.workers.dev`·미리 보기 주소를 열지 않는지, wrangler 판 고정, `set-token.py`가 확실히 틀린 값(글자 그대로·터널 토큰·머리말)을 거절하는지 |
 | `tests/adapter.test.js` | 서버가 보낼 수 있는 형식 변형(이름·단위·묶음·시각·판정·상자·이벤트·오류)이 같은 모양이 되는지 |
 | `tests/transport.test.js` | WebSocket·Socket.IO·SSE·폴링, HTTP·웹소켓 명령, FastAPI 오류 |
 | `tests/xml.test.js` | XML 읽기·쓰기, 서버 규약 v1.0 메시지(서버 문서 예시 그대로)와 요청안 메시지, XML 명령 보내기와 답 찾기(id로 찾고 답에 있는 명령 이름·목표 모드만 비교, 응답 미확인), 연결 확인 Ping, 연결 닫기 |
@@ -186,7 +200,8 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 | `tools/devices.html` · `tools/server-check.html` | 장치 점검(서보·자세 저장·카메라·컨베이어 규약 점검) · 서버 점검(XML: 연결·GetStatus·Ping·상태 간격, JSON: 기록 조회·순번·공정 단계 포함) (개발·설치용) |
 | `tools/simplicity-audit.js` | 심플함 측정 도구 ([결과 보고서](../docs/simplicity-report.md)) |
 | `tools/dev-server.py` | 캐시를 끈 개발용 정적 서버 (`/`는 빌드한 조작 화면 — 메인 서버 묶음과 같은 배치) |
-| `tools/make-server-bundle.py` | 메인 서버용 묶음 (React 빌드 + 점검 페이지 → `wwwroot/`) |
+| `tools/make-server-bundle.py` | 메인 서버용 묶음 (React 빌드 + 점검 페이지 → `wwwroot/`). `--dir`이면 zip 대신 폴더로 (Cloudflare에 올리는 화면 파일) |
+| `cloudflare/` | 밖에서 여는 HMI ([docs/cloudflare.md](../docs/cloudflare.md)): `worker.js`(화면 파일 + `/ws/hmi`만 터널로), `wrangler.jsonc`(배포 설정), `package.json`(wrangler 판 고정, `npm run deploy` · `dev`), `set-token.py`(서비스 토큰을 시험하고 Worker에 넣기), `.dev.vars.example`(이 PC 시험용 값) |
 
 ## 디자인 원칙
 

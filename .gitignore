@@ -4,3 +4,12 @@
 # React 조작 화면 (hmi-web-mockup/react): 받은 패키지와 빌드 결과는 올리지 않는다
 hmi-web-mockup/react/node_modules/
 hmi-web-mockup/react/dist/
+
+# 밖에서 여는 HMI (hmi-web-mockup/cloudflare): 받은 패키지, 만든 화면 파일, wrangler 작업 폴더, 이 PC 시험용 값
+hmi-web-mockup/cloudflare/node_modules/
+hmi-web-mockup/cloudflare/site/
+hmi-web-mockup/cloudflare/.wrangler/
+hmi-web-mockup/cloudflare/.dev.vars
+
+# 파이썬 도구를 불러 쓸 때 생기는 캐시
+__pycache__/
