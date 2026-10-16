@@ -148,7 +148,7 @@ HMI는 이 모양을 이미 읽습니다 (`tests/xml.test.js`, 시험용 서버 
 | 고장 `Fault` · 리더암 연결 · 판정 하나하나 · 공정 단계 · 팔로워 각도 · 서보 값 | 모양은 받아들일 수 있음. 실제 데이터 공급원(장비)을 연결한 뒤 (3차) |
 | 카메라 명령·영상 (4.4) | **따로 안내를 받음** ([hmi-video-integration.md](hmi-video-integration.md), 2026-10-17) — XML이 아니라 HTTP MJPEG와 상태 JSON. `Camera` 요소와 `CameraStart`·`CameraStop`은 더하지 않음 (8장) |
 
-**새로 요청할 것** (2026-10-17, 아직 보내지 않음 — 답장 [hmi-server-answer-1.md](hmi-server-answer-1.md) 0.5): 로봇팔이 옮길 부품 `SetSortTarget` (4.2)과 그 지금 값 `Line/@sortTarget`·이벤트 `SortTargetChanged` (4.1·4.3).
+**새로 요청할 것** (2026-10-17, 아직 보내지 않음 — 답장 [hmi-server-answer-1.md](hmi-server-answer-1.md) 0.5·7장): HMI가 고른 로봇팔이 옮길 부품을 보내는 `SetSortTarget` (4.2). 서버가 지금 값을 `Line/@sortTarget`·이벤트 `SortTargetChanged` (4.1·4.3)로 알려 주는 것은 선택.
 
 ### 4.1 상태에 더할 것 (우선순위 1)
 
@@ -189,7 +189,7 @@ HMI는 이 모양을 이미 읽습니다 (`tests/xml.test.js`, 시험용 서버 
 | 원점 복귀 | `<Command name="Home"><Motors>…</Motors></Command>` (2.1 예시) | HMI가 저장한 원점 각도로 옮김. 각도가 없으면 `HomeNotSet`, 여섯 개가 다 없으면 `InvalidAngles` (형식 검사는 회신으로 반영됨) |
 | 긴급정지 해제 | `<Command name="EmergencyStopRelease" />` | 해제해도 라인은 정지 상태로 남음 (D-004). 받기는 회신으로 반영됨 |
 | 정지 | `<Command name="ProgramStop" />` | 가동 중 장비 정지 (서버와 연결은 그대로, 회신 Q1). 서버가 제안한 `Stop` 별칭은 HMI에 필요 없음 |
-| 로봇팔이 옮길 부품 (2026-10-17 추가) | `<Command name="SetSortTarget" target="Good" />` · `target="Defect"` | 로봇팔이 상자에 옮길 부품 — 고른 쪽으로 판정된 부품을 옮기고 다른 쪽은 내보냄 (사용자 2026-10-17). 정지 상태에서만: 가동 중이면 `NotStopped`, 긴급정지 중이면 `EstopActive`, 값이 틀리거나 없으면 `InvalidTarget`. 받으면 `Line/@sortTarget`(4.1)과 이벤트 `SortTargetChanged`(4.3). 값 글자는 `server.xml.sortTargetValues`로 바꿈 |
+| 로봇팔이 옮길 부품 (2026-10-17 추가) | `<Command name="SetSortTarget" target="Good" />` · `target="Defect"` | HMI에서 작업자가 고른 값(로봇팔이 옮길 부품)을 서버에 알림. HMI는 판정하지 않고 고른 값만 보냄 — 값을 어떻게 쓸지는 서버·장비가 정함 (사용자 2026-10-17). HMI는 정지 상태에서만 보냄. 값이 틀리거나 없으면 `InvalidTarget`(제안), 서버가 받을 수 없는 때는 `NotStopped`·`EstopActive` 등으로 거절해도 됨. 서버가 지금 값을 `Line/@sortTarget`(4.1)·이벤트 `SortTargetChanged`(4.3)로 알려 주면 HMI가 그 값을 보임(선택). 값 글자는 `server.xml.sortTargetValues`로 바꿈 |
 | 카메라 | ~~`<Command name="CameraStart" camera="top" />` · `CameraStop`~~ | 더 요청하지 않음 — 서버가 영상을 HTTP로 주기로 함 (8장) |
 
 실제로 장비를 움직이게 되면 이렇게 답해 주세요.
@@ -246,7 +246,8 @@ HMI는 이 모양을 이미 읽습니다 (`tests/xml.test.js`, 시험용 서버 
 - [ ] 서버 담당이 우리에게 물은 것 (회신 5장) → 답장 초안 [hmi-server-answer-1.md](hmi-server-answer-1.md) (아직 보내지 않음).
 - [ ] 서버 README 새 판 받기 (회신에 README를 고쳤다고 함). 받으면 server-xml-v1.0.md는 그대로 두고 새 파일로.
 - [x] 카메라 영상 전달 방식 → 서버 안내 (2026-10-17, [hmi-video-integration.md](hmi-video-integration.md)): HTTP MJPEG `/video/1.mjpg`(탑뷰)·`/video/2.mjpg`(그리퍼)와 상태 JSON `/video/status` (8장).
-- [ ] 로봇팔이 옮길 부품 `SetSortTarget`·`Line/@sortTarget` (4.1·4.2) → 답장 0.5에 요청 (아직 보내지 않음). 서버를 다시 켰을 때의 처음 값도 정함 (HMI 제안: 마지막 값, 없으면 `Defect`).
+- [ ] 로봇팔이 옮길 부품 `SetSortTarget` 받기 (4.2), 지금 값 `Line/@sortTarget`(선택, 4.1) → 답장 0.5·7장에 요청 (아직 보내지 않음). 값을 어떻게 쓸지와 서버를 켰을 때의 값은 서버·장비 쪽에서 정함 — HMI는 고른 값만 보냄 (사용자 2026-10-17).
+- [ ] 영상 연동 같이 확인 (안내 9장의 2·4·5·6·7 — 실제 설비 영상) → 답장 8.3. 1·3은 2026-10-17 실제 서버로 확인 (장비망 밖에서 영상까지).
 
 ## 6. 설정 (`config.js`의 `server.xml`)
 

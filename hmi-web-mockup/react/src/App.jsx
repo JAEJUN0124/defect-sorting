@@ -236,17 +236,13 @@ export default function App() {
   }
 
   // ---------- 그리기에 쓰는 값 ----------
-  // 로봇팔이 옮길 부품: 서버가 알려 준 값 → 없으면 이 HMI에서 마지막으로 서버가 받은 값 (그때는 그렇다고 쓴다)
-  const sort = store.sortTarget();
-  const sortHint = sort.from === 'local' ? { text: t('sort.local') } : !sort.value ? { text: t('sort.unset') } : null;
-
-  // 상태 표시 (자동 가동 중 설명은 고른 부품으로: "로봇팔이 양품을 골라냅니다")
+  // 상태 표시
   const fault = p === 'stopped' && S && S.fault;
   let detail;
   const stateHomeBlock = p === 'stopped' ? store.homeBlock() : null; // 자동 시작을 막는 원점 문제 (수동 모드에서는 없음)
   if (fault) detail = store.faultDetail(S.fault);
   else if (stateHomeBlock) detail = t(stateHomeBlock === 'unset' ? 'detail.homeNotSet' : 'detail.homeRequired');
-  else if ((p === 'stopped' || p === 'running') && modeKnown) detail = t('detail.' + p + '.' + modeKey, { target: t(sort.value ? 'sort.' + sort.value : 'sort.any') });
+  else if ((p === 'stopped' || p === 'running') && modeKnown) detail = t('detail.' + p + '.' + modeKey);
   else if (p === 'unknown') detail = t('detail.unknown', { state: S.lineRaw });
   else if (p === 'unreported') detail = store.unreportedDetail();
   else if (p === 'stopped' || p === 'running') detail = t('detail.' + p + '.unknownMode');
@@ -276,6 +272,10 @@ export default function App() {
   // 리더암 각도: 수동 모드에서. 운전 모드를 모르면(XML v1.0) 서버가 각도를 보내는 동안 늘 보인다
   const leader = store.state.joints.leader;
   const showJoints = !!S && online && (S.mode === 'manual' || (!modeKnown && !!leader));
+
+  // 로봇팔이 옮길 부품: HMI는 고른 값을 서버에 보내기만 한다. 키는 서버가 알려 준 값 → 없으면 이 HMI에서 마지막으로 서버가 받은 값 (그때는 그렇다고 쓴다)
+  const sort = store.sortTarget();
+  const sortHint = sort.from === 'local' ? { text: t('sort.local') } : !sort.value ? { text: t('sort.unset') } : null;
 
   // 카메라: 실제 카메라만 (가짜 서버의 가짜 영상은 뺐다).
   // 브릿지 영상은 XML 연결과 따로 다룬다 (안내 5장) — 서버 연결이 끊겨도 영상은 이어서 볼 수 있다

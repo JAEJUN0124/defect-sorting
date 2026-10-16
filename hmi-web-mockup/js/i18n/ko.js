@@ -24,7 +24,7 @@ window.HMI_I18N.ko = {
   'detail.stopped.auto': '시작을 누르면 자동 선별을 시작합니다.',
   'detail.stopped.manual': '시작을 누르면 리더암으로 로봇팔을 움직일 수 있습니다.',
   'detail.starting': '장치 연결을 확인하고 있습니다.',
-  'detail.running.auto': '카메라 판정에 따라 로봇팔이 {target}을 골라냅니다.',
+  'detail.running.auto': '카메라 판정에 따라 로봇팔이 부품을 골라냅니다.',
   'detail.running.manual': '로봇팔이 리더암의 움직임을 따라 움직입니다.',
   'detail.stopping': '컨베이어와 로봇팔을 멈추고 있습니다.',
   'detail.homing': '로봇팔 6축을 저장된 원점으로 옮기고 있습니다.',
@@ -99,8 +99,6 @@ window.HMI_I18N.ko = {
   'sort.legend': '로봇팔이 옮길 부품',
   'sort.good': '양품',
   'sort.defect': '불량품',
-  // 옮길 부품을 아직 모를 때 상태 설명({target})에 쓰는 말
-  'sort.any': '부품',
   'sort.local': '서버가 지금 값을 아직 알려 주지 않아, 이 HMI에서 마지막으로 서버가 받은 값을 보입니다.',
   'sort.unset': '아직 고르지 않았습니다. 고르면 서버에 알립니다.',
 
