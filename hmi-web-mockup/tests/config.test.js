@@ -129,3 +129,31 @@ test('dev-server.py: / 는 React 조작 화면(react/dist), 그 밖은 hmi-web-m
   assert.equal((await get('tools/devices.html')).status, 200);
   assert.match((await get('js/config.js')).text, /HMI_CONFIG/); // 점검 페이지가 읽는 파일
 });
+
+// 시험 서버를 띄우고 출력에서 주소를 읽는다
+function spawnAndRead(t, args, re) {
+  const proc = spawn(PY, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(() => proc.kill());
+  return new Promise((resolve, reject) => {
+    let out = '';
+    proc.stdout.on('data', (d) => { out += d; const m = re.exec(out); if (m) resolve(m[0]); });
+    proc.on('exit', (code) => reject(new Error(args[0] + ' 종료 ' + code + ' ' + out)));
+  });
+}
+
+test('dev-server.py --server: /ws/hmi(웹소켓)와 /video/…를 메인 서버로 그대로 잇고 화면 파일은 그대로 — 화면과 서버가 같은 주소 (브라우저가 상태 JSON을 막지 않음)', { skip: (!PY && 'python 없음') || NO_DIST }, async (t) => {
+  // 메인 서버 흉내: 시험용 XML 서버 + 브릿지 영상
+  const wsUrl = await spawnAndRead(t, [path.join(__dirname, 'xml-server.py'), '0', '--video'], /ws:\/\/[^\s]+\/ws\/hmi/);
+  const upstream = wsUrl.replace(/^ws/, 'http').replace(/\/ws\/hmi$/, '');
+  const base = await spawnAndRead(t, [path.join(__dirname, '..', 'tools', 'dev-server.py'), '0', '--server', upstream], /http:\/\/localhost:\d+\//);
+  const st = await (await fetch(base + 'video/status')).json();
+  assert.equal(typeof st.connected, 'boolean');
+  assert.equal(st.cameras.length, 2);
+  const first = await new Promise((resolve, reject) => {
+    const ws = new WebSocket(base.replace(/^http/, 'ws') + 'ws/hmi');
+    ws.onmessage = (e) => { resolve(String(e.data)); ws.close(); };
+    ws.onerror = () => reject(new Error('ws error'));
+  });
+  assert.match(first, /type="Status"/); // 서버가 접속 직후 보내는 상태
+  assert.match(await (await fetch(base + 'index.html')).text(), /<div id="root">/);
+});

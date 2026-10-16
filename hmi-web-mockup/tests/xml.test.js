@@ -259,6 +259,25 @@ test('보내기: v1.0 명령 이름 · 모드 값 · 요청', () => {
   assert.equal(P.request('Ping', 'ping-001'), '<Message version="1.0" type="Ping" id="ping-001" />');
 });
 
+test('로봇팔이 옮길 부품: SetSortTarget target="Good|Defect"로 보내고, 요청안 Line/@sortTarget을 상태 sortTarget(good·defect)으로 읽는다', () => {
+  const good = P.command('sortTarget', { target: 'good' }, 'id-9');
+  assert.equal(good.text, '<Message version="1.0" type="Command" id="id-9"><Command name="SetSortTarget" target="Good" /></Message>');
+  assert.deepEqual([good.command, good.mode], ['SetSortTarget', null]);
+  assert.equal(P.command('sortTarget', { target: 'defect' }, 'id-10').text, '<Message version="1.0" type="Command" id="id-10"><Command name="SetSortTarget" target="Defect" /></Message>');
+  // 서버가 값 글자를 다르게 정하면 config.js server.xml.sortTargetValues로
+  assert.match(P.command('sortTarget', { target: 'good' }, 'id-11', { sortTargetValues: { good: 'OK' } }).text, /target="OK"/);
+  const a = make();
+  const line = (v) => `<Message version="1.0" type="Status"><Status source="simulation"><Line state="Stopped" mode="Auto" emergencyStop="false" homeRequired="false" sortTarget="${v}" /><Equipment /></Status></Message>`;
+  assert.equal(a.message(line('Good'))[0].data.sortTarget, 'good');
+  assert.equal(a.message(line('Defect'))[0].data.sortTarget, 'defect');
+  assert.equal(a.message(line('Maybe'))[0].data.sortTarget, 'unknown');
+  // 서버가 아직 보내지 않으면(v1.0) 값이 없다 — 화면은 이 HMI에서 마지막으로 서버가 받은 값을 보인다
+  assert.equal(a.message(STATUS_UNAVAILABLE)[0].data.sortTarget, undefined);
+  // 값이 틀렸다는 거절(요청안 InvalidTarget)은 HMI 코드 INVALID_SORT_TARGET으로 (화면 문구 error.INVALID_SORT_TARGET)
+  const [bad] = a.message('<Message version="1.0" type="Reply" id="s2"><Reply command="SetSortTarget" result="Rejected" code="InvalidTarget" executed="false" /></Message>');
+  assert.equal(a.error(409, bad.data.body).code, 'INVALID_SORT_TARGET');
+});
+
 test('보내기: 원점 복귀는 HMI가 저장한 각도를 Status와 같은 모양으로 붙인다 (homePose: false면 v1.0처럼 이름만)', () => {
   const pose = { angles: { shoulder_pan: 10.123, shoulder_lift: -20, elbow_flex: 30, wrist_flex: 40, wrist_roll: 50, gripper: 60 }, units: { gripper: 'pct' } };
   const r = P.command('home', pose, 'h-1');

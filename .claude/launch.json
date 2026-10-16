@@ -16,7 +16,7 @@
     {
       "name": "hmi-web-mockup-lan",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["hmi-web-mockup/tools/dev-server.py", "8080", "--host", "0.0.0.0"],
+      "runtimeArgs": ["hmi-web-mockup/tools/dev-server.py", "8080", "--host", "0.0.0.0", "--server", "http://10.108.108.98:5080"],
       "port": 8080
     },
     {
@@ -48,6 +48,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["hmi-web-mockup/tests/xml-server.py", "5081", "--simulation", "--extended"],
       "port": 5081
+    },
+    {
+      "name": "xml-server-video",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["hmi-web-mockup/tests/xml-server.py", "5092", "--simulation", "--extended", "--video", "--static", "hmi-web-mockup/react/dist"],
+      "port": 5092
     },
     {
       "name": "hmi-cloudflare-dev",

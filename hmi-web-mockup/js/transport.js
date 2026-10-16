@@ -18,6 +18,7 @@
     mode: ['PUT', '/mode'],
     cameraStart: ['POST', '/camera/start'],
     cameraStop: ['POST', '/camera/stop'],
+    sortTarget: ['PUT', '/sort-target'], // 로봇팔이 옮길 부품 { target: 'good' | 'defect' } (docs/API.md v0.6)
     // 프로그램 종료는 HMI만 닫아 서버 명령이 없다 (사용자 2026-10-16)
   };
   // SSE에서 이름 붙은 이벤트로 올 수 있는 메시지 종류

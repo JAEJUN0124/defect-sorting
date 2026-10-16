@@ -24,7 +24,7 @@ window.HMI_I18N.ko = {
   'detail.stopped.auto': '시작을 누르면 자동 선별을 시작합니다.',
   'detail.stopped.manual': '시작을 누르면 리더암으로 로봇팔을 움직일 수 있습니다.',
   'detail.starting': '장치 연결을 확인하고 있습니다.',
-  'detail.running.auto': '카메라 판정에 따라 로봇팔이 불량품을 골라냅니다.',
+  'detail.running.auto': '카메라 판정에 따라 로봇팔이 {target}을 골라냅니다.',
   'detail.running.manual': '로봇팔이 리더암의 움직임을 따라 움직입니다.',
   'detail.stopping': '컨베이어와 로봇팔을 멈추고 있습니다.',
   'detail.homing': '로봇팔 6축을 저장된 원점으로 옮기고 있습니다.',
@@ -57,7 +57,7 @@ window.HMI_I18N.ko = {
   // 시작 / 정지
   'run.start': '시작',
   'run.stop': '정지',
-  'run.locked': '모드 전환과 원점 복귀는 정지한 뒤 할 수 있습니다.',
+  'run.locked': '모드 전환, 옮길 부품 바꾸기, 원점 복귀는 정지한 뒤 할 수 있습니다.',
   'run.homeFirst': '원점 복귀를 먼저 해야 자동으로 시작할 수 있습니다.',
   'run.homeNotSet': '저장된 원점이 없어 자동으로 시작할 수 없습니다.',
 
@@ -88,11 +88,21 @@ window.HMI_I18N.ko = {
   'cmd.mode': '운전 모드 전환',
   'cmd.cameraStart': '카메라 켜기',
   'cmd.cameraStop': '카메라 끄기',
+  'cmd.sortTarget': '로봇팔이 옮길 부품 선택',
 
   // 모드
   'mode.legend': '운전 모드',
   'mode.auto': '자동',
   'mode.manual': '수동',
+
+  // 로봇팔이 옮길 부품 (사용자 2026-10-17) — 고른 쪽을 로봇팔이 상자에 옮긴다
+  'sort.legend': '로봇팔이 옮길 부품',
+  'sort.good': '양품',
+  'sort.defect': '불량품',
+  // 옮길 부품을 아직 모를 때 상태 설명({target})에 쓰는 말
+  'sort.any': '부품',
+  'sort.local': '서버가 지금 값을 아직 알려 주지 않아, 이 HMI에서 마지막으로 서버가 받은 값을 보입니다.',
+  'sort.unset': '아직 고르지 않았습니다. 고르면 서버에 알립니다.',
 
   // 리더암 관절
   'joints.title': '리더암 각도',
@@ -123,6 +133,15 @@ window.HMI_I18N.ko = {
   'camera.noUrl': '서버가 영상 주소를 알려 주지 않았습니다.',
   'camera.localFailed': '이 PC의 카메라를 열지 못했습니다. 브라우저 권한과 USB 연결을 확인하세요.',
   'camera.noMock': '가짜 서버에는 카메라 영상이 없습니다. 실제 서버나 USB 카메라를 연결하세요.',
+  'camera.switch': '보이는 카메라',
+  // 브릿지 서버 영상의 상태 (서버 담당 안내 5장의 표현)
+  'camera.bridge.checking': '영상 상태를 확인하고 있습니다',
+  'camera.bridge.waiting': '설비 영상 연결 대기 — 설비가 아직 영상을 보내지 않습니다',
+  'camera.bridge.none': '영상 미수신 — 이 카메라의 영상이 아직 오지 않았습니다',
+  'camera.bridge.stale': '5초 이상 새 영상 없음',
+  'camera.bridge.unknown': '영상 상태 확인 불가 — 다시 확인하고 있습니다',
+  'camera.bridge.opening': '영상을 여는 중입니다',
+  'camera.bridge.retry': '영상을 받지 못해 다시 연결합니다',
 
   // 판정
   'result.good': '양품',
@@ -168,6 +187,7 @@ window.HMI_I18N.ko = {
   'event.shutdown_completed': '프로그램 종료 정리를 마쳤습니다',
   'event.server_protocol_error': '서버가 통신 오류를 알렸습니다 ({code})',
   'event.mode_changed': '{mode} 모드로 바꿨습니다',
+  'event.sort_target_changed': '로봇팔이 옮길 부품을 {target}으로 바꿨습니다',
   'event.defect_detected': '불량품을 찾았습니다 (#{id})',
   'event.device_disconnected': '{device} 연결이 끊겼습니다',
   'event.device_reconnected': '{device}에 다시 연결했습니다',
@@ -189,6 +209,7 @@ window.HMI_I18N.ko = {
   'event.line_stopped_fault.bare': '장치 연결이 끊겨 라인을 정지했습니다',
   'event.start_rejected.bare': '장치 연결이 끊겨 시작하지 못했습니다',
   'event.mode_changed.bare': '운전 모드를 바꿨습니다',
+  'event.sort_target_changed.bare': '로봇팔이 옮길 부품을 바꿨습니다',
   'event.defect_detected.bare': '불량품을 찾았습니다',
   'event.device_disconnected.bare': '장치 연결이 끊겼습니다',
   'event.device_reconnected.bare': '장치에 다시 연결했습니다',
@@ -200,7 +221,7 @@ window.HMI_I18N.ko = {
   'event.inference_slow.bare': '판정이 느려졌습니다',
   'event.calibration_missing.bare': '로봇팔 캘리브레이션 값이 없습니다',
   'event.sort_retry': '{step} 단계에서 집지 못해 다시 시도합니다 (#{part})',
-  'event.sort_retry.bare': '불량품을 다시 집습니다',
+  'event.sort_retry.bare': '부품을 다시 집습니다',
   'event.conveyor_halted': '컨베이어가 스스로 멈추고 잠겼습니다 ({reason})',
   'event.conveyor_halted.bare': '컨베이어가 스스로 멈추고 잠겼습니다',
 
@@ -209,7 +230,7 @@ window.HMI_I18N.ko = {
   'fault.POWER_ABNORMAL': '{arm} 전원 전압이 맞지 않습니다.',
   'fault.LINE_FAULT': '서버가 고장 상태를 알렸습니다.',
   'fault.CALIBRATION_REQUIRED': '로봇팔 캘리브레이션이 필요합니다.',
-  'fault.GRIP_FAILED': '로봇팔이 {step} 단계에서 불량품을 집지 못했습니다.',
+  'fault.GRIP_FAILED': '로봇팔이 {step} 단계에서 부품을 집지 못했습니다.',
   'fault.ARM_MOTION_TIMEOUT': '로봇팔이 {step} 단계에서 제시간에 자세에 닿지 못했습니다.',
   'fault.CONVEYOR_HALTED': '컨베이어가 스스로 멈췄습니다({reason}).',
   'fault.PART_STUCK': '부품이 검사 자리를 지나가지 않습니다(걸림).',
@@ -233,13 +254,13 @@ window.HMI_I18N.ko = {
   // 공정 단계 (상태 cycle.stage)와 로봇팔 작업 단계 (cycle.step)
   'stage.feeding': '부품 옮기는 중',
   'stage.inspecting': '판정 중',
-  'stage.sorting': '불량품 옮기는 중',
-  'stage.passing': '양품 내보내는 중',
+  'stage.sorting': '로봇팔이 옮기는 중',
+  'stage.passing': '그대로 내보내는 중',
   'step.wait': '대기 자세로',
   'step.above_pick': '집는 자리 위로',
   'step.pick': '집는 자리로',
   'step.grasp_part': '집기(학습 정책)',
-  'step.above_bin': '불량 상자 위로',
+  'step.above_bin': '상자 위로',
   'step.gripper_open': '놓기',
   'step.gripper_close': '쥐기',
   'step.home': '원점 복귀',
@@ -274,6 +295,8 @@ window.HMI_I18N.ko = {
   'error.XML_INVALID_COMMAND': '서버가 이 명령의 형식을 받지 않았습니다(InvalidCommand). 서버 규약 판을 확인하세요.',
   'error.XML_INVALID_COMMAND.homePose': '서버가 원점 각도가 붙은 원점 복귀를 아직 받지 않습니다(InvalidCommand). 서버 담당이 지원하기 전까지는 config.js의 server.xml.homePose를 false로 두면 각도 없이 보냅니다.',
   'error.XML_INVALID_COMMAND.camera': '서버가 아직 카메라 명령을 받지 않습니다(InvalidCommand). 서버 담당이 카메라 명령을 추가해야 합니다.',
+  'error.sortTarget.unsupported': '서버가 아직 "로봇팔이 옮길 부품" 명령(SetSortTarget)을 받지 않습니다. 서버 담당이 이 명령을 추가해야 합니다.',
+  'error.INVALID_SORT_TARGET': '서버가 로봇팔이 옮길 부품 값을 받지 않았습니다. 양품 또는 불량품만 보낼 수 있습니다.',
   'error.XML_INVALID_XML': '서버가 HMI가 보낸 XML을 읽지 못했습니다(InvalidXml).',
   'error.XML_INVALID_REQUEST': '서버가 요청 형식을 받지 않았습니다(InvalidRequest). 서버 규약 판을 확인하세요.',
   'error.XML_UNSUPPORTED_VERSION': '서버가 이 규약 판을 받지 않습니다(UnsupportedVersion). config.js의 server.xml.version을 확인하세요.',

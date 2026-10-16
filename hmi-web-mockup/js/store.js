@@ -13,11 +13,18 @@
   const SEEN_KEEP = 2000;
   const POSE_FRESH_MS = 3000; // 원점 잡기에 쓰는 각도는 이보다 최근에 받은 것만
   const STATUS_POLL_TICK_MS = 250; // 상태가 늦었는지 보는 간격 (XML)
+  const SORT_KEY = 'hmi.sortTarget'; // 서버가 받은 "로봇팔이 옮길 부품" — 서버가 지금 값을 알려 주기 전까지 보이는 값 (이 브라우저)
   // 서버가 처음 보낸 상태에 없는 값의 기본. XML 규약 v1.0은 라인 상태·긴급정지·운전 모드·고장·원점 필요를 보내지 않는다 —
   // null·undefined(모름). 검사 개수도 서버가 무효(valid="false")라고 하면 null이고, 화면은 '–'로 보인다
   const EMPTY_STATUS = api.xml
-    ? { line: null, estop: null, mode: null, devices: {}, stats: null, cameras: {}, fault: undefined, startedAt: null, homeRequired: undefined, cycle: null }
-    : { line: 'stopped', estop: false, mode: 'auto', devices: {}, stats: { total: 0, good: 0, defect: 0 }, cameras: {}, fault: null, startedAt: null, homeRequired: false, cycle: null };
+    ? { line: null, estop: null, mode: null, devices: {}, stats: null, cameras: {}, fault: undefined, startedAt: null, homeRequired: undefined, cycle: null, sortTarget: null }
+    : { line: 'stopped', estop: false, mode: 'auto', devices: {}, stats: { total: 0, good: 0, defect: 0 }, cameras: {}, fault: null, startedAt: null, homeRequired: false, cycle: null, sortTarget: null };
+  // 브릿지 서버의 영상 (js/video.js, 서버 담당 안내 2026-10-17): XML 서버이고 config.js cameras.bridge가 있으면
+  // 카메라 켜기·끄기를 서버 명령 없이 이 HMI에서 하고(영상 주소를 열고 닫음), 카메라 상태는 /video/status로 본다
+  const videoUrls = api.xml && window.HmiVideo && cfg.cameras && cfg.cameras.bridge ? window.HmiVideo.urls(cfg) : null;
+  const videoPoller = videoUrls
+    ? window.HmiVideo.createPoller({ url: videoUrls.status, pollMs: cfg.cameras.bridge.pollMs, timeoutMs: cfg.cameras.bridge.timeoutMs })
+    : null;
   const JOINTS = window.HmiHome.JOINTS;
 
   const listeners = new Set();
@@ -34,6 +41,9 @@
     minutes: [], // 분마다 판정 수 [{ t, good, defect }] — 이 PC 시계 기준 (서버 분당 집계는 시계 차이를 빼서 옮김)
     history: { supported: null, runId: null, restored: 0 }, // 기록 조회(GET /history): 서버가 주는지, 처음에 채운 기록 수
     lastMessageAt: 0,
+    // 브릿지 영상: on = 이 HMI가 영상을 보고 있음, camera = 보이는 카메라 (탑뷰/그리퍼 바꾸기)
+    video: { on: false, camera: videoUrls ? Object.keys(videoUrls.streams)[0] || null : null },
+    sortTargetSent: readSortTarget(), // 이 HMI에서 마지막으로 서버가 받은 "로봇팔이 옮길 부품" ('good' · 'defect' · null)
   };
   // 지난 기록 맞추기 (docs/API.md 5.2): 화면을 열 때와 다시 연결될 때 빈 곳을 채운다
   const sync = {
@@ -59,6 +69,15 @@
     listeners.forEach((fn) => {
       try { fn(kind, data); } catch (err) { console.error(err); } // 한 화면 부분이 실패해도 나머지는 그린다
     });
+  }
+
+  if (videoPoller) videoPoller.subscribe(() => emit('video', state.video));
+
+  function readSortTarget() {
+    try {
+      const v = localStorage.getItem(SORT_KEY);
+      return v === 'good' || v === 'defect' ? v : null;
+    } catch (err) { return null; } // 저장소가 막힌 브라우저
   }
 
   // ---------- 연결 ----------
@@ -347,6 +366,7 @@
   const known = (key, fallback) => { const s = t(key); return s === key ? fallback : s; };
 
   function cameraIds() {
+    if (videoUrls) return Object.keys(videoUrls.streams);
     const ids = [];
     ((state.info && state.info.cameras) || []).forEach((c) => { if (!ids.includes(c.id)) ids.push(c.id); });
     Object.keys((state.status && state.status.cameras) || {}).forEach((id) => { if (!ids.includes(id)) ids.push(id); });
@@ -354,8 +374,60 @@
   }
 
   function primaryCamera() {
+    if (videoUrls) return state.video.camera;
     if (cfg.cameras.primary && cfg.cameras.primary !== 'auto') return cfg.cameras.primary;
     return cameraIds()[0] || api.adapter.primaryCamera();
+  }
+
+  // ---------- 브릿지 서버 영상 (js/video.js) ----------
+
+  const videoBridge = () => !!videoPoller;
+
+  // 탑뷰/그리퍼 바꾸기 — 한 화면에 고른 카메라 하나를 보인다 (사용자 2026-10-17)
+  function selectCamera(id) {
+    if (!videoUrls || !videoUrls.streams[id] || state.video.camera === id) return;
+    state.video.camera = id;
+    emit('video', state.video);
+  }
+
+  // 카메라 켜기·끄기: 브릿지 영상이면 이 HMI에서만 — 영상 주소를 열고 닫을 뿐 설비의 촬영은 그대로다 (안내 7장). 아니면 서버 명령
+  function startCamera() {
+    if (!videoPoller) return api.startCamera();
+    state.video.on = true;
+    videoPoller.start();
+    emit('video', state.video);
+    return Promise.resolve(null);
+  }
+
+  function stopCamera() {
+    if (!videoPoller) return api.stopCamera();
+    state.video.on = false;
+    videoPoller.stop();
+    emit('video', state.video);
+    return Promise.resolve(null);
+  }
+
+  // 브릿지 카메라 하나의 단계 (video.js classify): 'checking' · 'unknown' · 'waiting' · 'none' · 'stale' · 'live'. 브릿지가 아니거나 꺼져 있으면 null
+  function videoPhase(id) {
+    if (!videoPoller || !state.video.on || !videoUrls.streams[id]) return null;
+    return window.HmiVideo.classify(videoPoller.state.status, videoUrls.streams[id].id, videoPoller.state.error);
+  }
+
+  // ---------- 로봇팔이 옮길 부품 (양품 · 불량품, 사용자 2026-10-17) ----------
+  // 서버가 지금 값을 알려 주면(상태 sortTarget — XML은 요청안 Line/@sortTarget) 그것을, 아니면 이 HMI에서 마지막으로 서버가 받은 값을 보인다
+  function sortTarget() {
+    const v = state.status && state.status.sortTarget;
+    if (v === 'good' || v === 'defect') return { value: v, from: 'server' };
+    return { value: state.sortTargetSent, from: state.sortTargetSent ? 'local' : null };
+  }
+
+  // 서버에 보낸다 (XML SetSortTarget target="Good|Defect" · JSON PUT /sort-target). 서버가 받으면(거절이 아니면) 이 HMI에 기억한다
+  async function setSortTarget(target) {
+    const res = await api.setSortTarget(target);
+    state.sortTargetSent = target;
+    try { localStorage.setItem(SORT_KEY, target); } catch (err) { /* 저장이 막힌 브라우저면 이번 화면에서만 */ }
+    emit('sortTarget', target);
+    return res;
   }
 
   function cameraName(id) {
@@ -386,6 +458,7 @@
     if (p.reason) p.reason = reasonText(p.reason);
     if (p.camera) p.camera = cameraName(p.camera);
     if (p.step) p.step = stepName(p.step);
+    if (evt.code === 'sort_target_changed' && p.target) p.target = known('sort.' + String(p.target).toLowerCase(), p.target);
     const key = 'event.' + evt.code;
     const text = t(key, p);
     if (text !== key && !/\{\w+\}/.test(text)) return text;
@@ -543,6 +616,8 @@
     // InvalidCommand — 서버 담당 회신 2026-10-16) · 서버가 모르는 명령 · 서버 규약에 없는 명령
     if (code === 'XML_INVALID_COMMAND' && d.command === 'Home' && cfg.server.xml && cfg.server.xml.homePose !== false) return t('error.XML_INVALID_COMMAND.homePose');
     if (code === 'XML_INVALID_COMMAND' && /^Camera(Start|Stop)$/.test(d.command || '')) return t('error.XML_INVALID_COMMAND.camera');
+    // 로봇팔이 옮길 부품: v1.0 서버는 이 명령을 모른다 — 속성(target)을 먼저 보므로 InvalidCommand, 속성이 없으면 UnknownCommand
+    if ((code === 'XML_INVALID_COMMAND' || code === 'XML_UNKNOWN_COMMAND') && d.command === 'SetSortTarget') return t('error.sortTarget.unsupported');
     if (code === 'XML_UNKNOWN_COMMAND') return t('error.XML_UNKNOWN_COMMAND', { command: d.command || '?' });
     if (code === 'NOT_IN_PROTOCOL') return t('error.NOT_IN_PROTOCOL', { command: known('cmd.' + d.command, d.command || '?') });
     const known2 = t('error.' + code);
@@ -551,8 +626,15 @@
     return t('error.unknown', { code });
   }
 
-  // 카메라 상태 + 영상 받는 방식. 설정(cameras.transport)이 'auto'가 아니면 그것을 쓴다
+  // 카메라 상태 + 영상 받는 방식. 설정(cameras.transport)이 'auto'가 아니면 그것을 쓴다.
+  // 브릿지 영상이면 켜기는 이 HMI가 정하고(state.video.on), camera.js가 상태 조회(poller)를 보며 영상을 열고 닫는다
   function cameraSource(id) {
+    if (videoUrls) {
+      const s = videoUrls.streams[id];
+      return s
+        ? { id, streaming: state.video.on, url: s.url, transport: 'bridge', videoId: s.id, poller: videoPoller }
+        : { id, streaming: false, url: null, transport: 'bridge' };
+    }
     const st = state.status && state.status.cameras && state.status.cameras[id];
     const fromInfo = state.info && state.info.cameras.find((c) => c.id === id);
     const forced = cfg.cameras.transport && cfg.cameras.transport !== 'auto' ? cfg.cameras.transport : null;
@@ -621,13 +703,23 @@
         onMessage,
       });
     },
-    // 서버 연결을 닫는다 (프로그램 종료 — 이 HMI만 끝낸다). 다시 붙지 않는다
-    stop() { api.close(); },
+    // 서버 연결과 영상 상태 조회를 닫는다 (프로그램 종료 — 이 HMI만 끝낸다). 다시 붙지 않는다
+    stop() {
+      if (videoPoller) videoPoller.stop();
+      api.close();
+    },
     refresh,
     cameraIds,
     primaryCamera,
     cameraName,
     cameraSource,
+    videoBridge,
+    selectCamera,
+    startCamera,
+    stopCamera,
+    videoPhase,
+    sortTarget,
+    setSortTarget,
     deviceName,
     jointName,
     armName,

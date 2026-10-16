@@ -22,8 +22,11 @@
       release: 'EmergencyStopRelease',
       cameraStart: 'CameraStart',
       cameraStop: 'CameraStop',
+      // 로봇팔이 옮길 부품(양품·불량품) — 요청안 이름 (docs/xml-protocol.md 4.2, 사용자 2026-10-17). v1.0 서버는 속성 target을 몰라 InvalidCommand
+      sortTarget: 'SetSortTarget',
     },
     modeValues: { auto: 'Auto', manual: 'Manual' },
+    sortTargetValues: { good: 'Good', defect: 'Defect' },
     // 원점 복귀(Home) 때 HMI가 저장한 원점 각도를 <Motors>로 함께 보낸다 (원점은 HMI가 가진다).
     // 회신(2026-10-16) 뒤 서버는 받아서 모터 1~6·숫자·단위(deg만)를 검사하고, 맞지 않으면 InvalidAngles로 거절한다.
     // 그 전 v1.0 서버는 Command 안에 하위 요소를 받지 않아 InvalidCommand로 거절했다 — false면 이름만 보낸다
@@ -33,7 +36,8 @@
   };
 
   // v1.0 오류 코드 → HMI 오류 코드 (화면 문구: js/i18n/ko.js error.*)
-  const REPLY_CODES = { InvalidCommand: 'XML_INVALID_COMMAND', UnknownCommand: 'XML_UNKNOWN_COMMAND', InvalidMode: 'INVALID_MODE' };
+  // InvalidTarget은 요청안 SetSortTarget(로봇팔이 옮길 부품)의 값이 틀렸을 때 (xml-server.py --extended)
+  const REPLY_CODES = { InvalidCommand: 'XML_INVALID_COMMAND', UnknownCommand: 'XML_UNKNOWN_COMMAND', InvalidMode: 'INVALID_MODE', InvalidTarget: 'INVALID_SORT_TARGET' };
   const ERROR_CODES = {
     InvalidXml: 'XML_INVALID_XML', InvalidRequest: 'XML_INVALID_REQUEST', UnsupportedVersion: 'XML_UNSUPPORTED_VERSION',
     UnknownType: 'XML_UNKNOWN_TYPE', MissingRequestId: 'XML_MISSING_REQUEST_ID',
@@ -44,6 +48,7 @@
     return Object.assign({}, DEFAULTS, c, {
       commands: Object.assign({}, DEFAULTS.commands, c.commands),
       modeValues: Object.assign({}, DEFAULTS.modeValues, c.modeValues),
+      sortTargetValues: Object.assign({}, DEFAULTS.sortTargetValues, c.sortTargetValues),
     });
   }
 
@@ -165,7 +170,7 @@
     // 요청안: 라인 상태 · 고장 · 공정 단계 (docs/xml-protocol.md 4.1). 라인 상태를 보내는 서버라면 고장·단계가 없을 때 '없음'으로 본다
     const line = X_.child(node, 'Line');
     if (line) {
-      [['state', 'line'], ['mode', 'mode'], ['emergencyStop', 'estop'], ['homeRequired', 'home_required'], ['startedAt', 'started_at']].forEach(([a, k]) => {
+      [['state', 'line'], ['mode', 'mode'], ['emergencyStop', 'estop'], ['homeRequired', 'home_required'], ['startedAt', 'started_at'], ['sortTarget', 'sort_target']].forEach(([a, k]) => {
         const v = X_.attr(line, a);
         if (v !== undefined) raw[k] = v;
       });
@@ -319,6 +324,10 @@
       attrs.mode = mode;
     }
     if ((name === 'cameraStart' || name === 'cameraStop') && body && body.camera) attrs.camera = body.camera;
+    if (name === 'sortTarget') {
+      const v = body && body.target;
+      attrs.target = s.sortTargetValues[v] || v;
+    }
     const children = [];
     if (name === 'home' && s.homePose && body && body.angles) children.push(motorsOf(body));
     const text = X().stringify(el('Message', { version: s.version, type: 'Command', id }, [el('Command', attrs, children)]));

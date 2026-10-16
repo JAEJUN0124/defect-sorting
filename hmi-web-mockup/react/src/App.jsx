@@ -93,6 +93,8 @@ export default function App() {
         case 'info':
         case 'home':
         case 'joints':
+        case 'video': // 브릿지 영상: 켜기·끄기, 탑뷰/그리퍼, 상태 조회 결과
+        case 'sortTarget':
           rerender();
           break;
         case 'inspection':
@@ -198,6 +200,13 @@ export default function App() {
     act('mode', () => api.setMode(mode));
   }
 
+  // 로봇팔이 옮길 부품 (사용자 2026-10-17). 서버가 이미 그 값이라고 알려 줬으면 보내지 않는다
+  function onSortTarget(target) {
+    const now = store.sortTarget();
+    if (now.from === 'server' && now.value === target) return;
+    act('sortTarget', () => store.setSortTarget(target));
+  }
+
   // 프로그램 종료: 이 HMI만 끝낸다 (사용자 2026-10-16). 서버에는 아무것도 보내지 않아 라인과 장비는 그대로다.
   // 서버 연결을 닫고, 브라우저는 스크립트가 연 창만 닫을 수 있어 종료 화면을 남긴다
   async function onExit() {
@@ -227,13 +236,17 @@ export default function App() {
   }
 
   // ---------- 그리기에 쓰는 값 ----------
-  // 상태 표시
+  // 로봇팔이 옮길 부품: 서버가 알려 준 값 → 없으면 이 HMI에서 마지막으로 서버가 받은 값 (그때는 그렇다고 쓴다)
+  const sort = store.sortTarget();
+  const sortHint = sort.from === 'local' ? { text: t('sort.local') } : !sort.value ? { text: t('sort.unset') } : null;
+
+  // 상태 표시 (자동 가동 중 설명은 고른 부품으로: "로봇팔이 양품을 골라냅니다")
   const fault = p === 'stopped' && S && S.fault;
   let detail;
   const stateHomeBlock = p === 'stopped' ? store.homeBlock() : null; // 자동 시작을 막는 원점 문제 (수동 모드에서는 없음)
   if (fault) detail = store.faultDetail(S.fault);
   else if (stateHomeBlock) detail = t(stateHomeBlock === 'unset' ? 'detail.homeNotSet' : 'detail.homeRequired');
-  else if ((p === 'stopped' || p === 'running') && modeKnown) detail = t('detail.' + p + '.' + modeKey);
+  else if ((p === 'stopped' || p === 'running') && modeKnown) detail = t('detail.' + p + '.' + modeKey, { target: t(sort.value ? 'sort.' + sort.value : 'sort.any') });
   else if (p === 'unknown') detail = t('detail.unknown', { state: S.lineRaw });
   else if (p === 'unreported') detail = store.unreportedDetail();
   else if (p === 'stopped' || p === 'running') detail = t('detail.' + p + '.unknownMode');
@@ -264,26 +277,36 @@ export default function App() {
   const leader = store.state.joints.leader;
   const showJoints = !!S && online && (S.mode === 'manual' || (!modeKnown && !!leader));
 
-  // 카메라: 실제 카메라만 (가짜 서버의 가짜 영상은 뺐다)
-  const src = S && online && !ended ? store.cameraSource(store.primaryCamera()) : null;
+  // 카메라: 실제 카메라만 (가짜 서버의 가짜 영상은 뺐다).
+  // 브릿지 영상은 XML 연결과 따로 다룬다 (안내 5장) — 서버 연결이 끊겨도 영상은 이어서 볼 수 있다
+  const bridge = store.videoBridge();
+  const camId = store.primaryCamera();
+  const src = !ended && (bridge || (S && online)) ? store.cameraSource(camId) : null;
   const mockCamera = !!(src && src.transport === 'mock');
   const streaming = !!(src && src.streaming) && !mockCamera;
   const cameraBusy = ui.busy.has('camera');
   const cameraNote = ui.notes.camera || (src && src.streaming && mockCamera ? { text: t('camera.noMock') } : null);
+  const cams = bridge ? store.cameraIds() : [];
 
   // 생산 통계: 서버가 검사 개수를 무효라고 하면(stats: null — XML v1.0 valid="false") 0 대신 '–'
   const stats = S && S.stats;
 
-  // 장치 연결 (개발용): 서버 → 컨베이어 → 로봇팔 → 리더암 → 카메라들(서버 목록 순) → 그 밖
+  // 장치 연결 (개발용): 서버 → 컨베이어 → 로봇팔 → 리더암 → 카메라들(서버 목록 순) → 그 밖.
+  // 브릿지 영상의 카메라는 영상을 보는 동안 /video/status로 (XML의 RobotArm·Status로 대신 판단하지 않는다 — 안내 7장)
   let deviceIds = [];
+  const videoCams = bridge && store.state.video.on ? cams.map((c) => 'camera_' + c) : [];
   if (cfg.devMode) {
     const ids = Object.keys((S && S.devices) || {});
-    const cams = store.cameraIds().map((c) => 'camera_' + c).filter((d) => ids.includes(d));
-    const first = DEVICE_ORDER.filter((d) => ids.includes(d)).concat(cams);
-    const ordered = first.concat(ids.filter((d) => !first.includes(d)).sort());
-    deviceIds = ['server'].concat(ordered.length ? ordered : DEVICE_ORDER);
+    const camDevices = store.cameraIds().map((c) => 'camera_' + c).filter((d) => ids.includes(d) && !videoCams.includes(d));
+    const first = DEVICE_ORDER.filter((d) => ids.includes(d)).concat(camDevices);
+    const ordered = first.concat(ids.filter((d) => !first.includes(d) && !videoCams.includes(d)).sort());
+    deviceIds = ['server'].concat(ordered.length ? ordered : DEVICE_ORDER, videoCams);
   }
-  const deviceOn = (name) => (name === 'server' ? online : !!(S && S.devices[name] === 'connected'));
+  const deviceOn = (name) => {
+    if (name === 'server') return online;
+    if (videoCams.includes(name)) return store.videoPhase(name.slice(7)) === 'live';
+    return !!(S && S.devices[name] === 'connected');
+  };
 
   return (
     <>
@@ -360,6 +383,24 @@ export default function App() {
               <Note id="mode-note" note={ui.notes.mode} />
             </div>
 
+            {/* 로봇팔이 옮길 부품 — 운전 모드처럼 정지 상태에서만 (사용자 2026-10-17) */}
+            <div className="mode" role="group" aria-labelledby="sort-legend">
+              <p className="mode__legend" id="sort-legend">{t('sort.legend')}</p>
+              <div className="mode__keys">
+                {['good', 'defect'].map((v) => (
+                  <button
+                    key={v} type="button" className="key key--mode" data-sort={v}
+                    aria-pressed={String(sort.value === v)}
+                    disabled={!stopped || ui.busy.has('sortTarget')}
+                    onClick={() => onSortTarget(v)}
+                  >
+                    <span>{t('sort.' + v)}</span>
+                  </button>
+                ))}
+              </div>
+              <Note id="sort-note" note={ui.notes.sortTarget || sortHint} />
+            </div>
+
             <div className="joints" id="joints" hidden={!showJoints}>
               <p className="joints__title">{t('joints.title')}</p>
               <dl className="joints__list" id="joints-list">
@@ -391,20 +432,39 @@ export default function App() {
             <Camera source={streaming ? src : null} onView={(v) => { camera.current = v; }} />
             <div className="camera__empty" id="camera-empty" hidden={streaming}>
               <p>{t('camera.off')}</p>
+              {/* 브릿지 영상은 서버 명령 없이 이 HMI에서 연다 — 서버 연결과 따로 */}
               <button
                 type="button" className="key key--screen" id="btn-camera"
-                disabled={!online || !S || cameraBusy || ended}
-                onClick={() => act('camera', () => api.startCamera())}
+                disabled={(bridge ? false : !online || !S) || cameraBusy || ended}
+                onClick={() => act('camera', () => store.startCamera())}
               >
                 <span id="camera-btn-label">{t(cameraBusy ? 'camera.connecting' : 'camera.connect')}</span>
               </button>
               <Note id="camera-note" className="note note--screen" note={cameraNote} />
             </div>
+            {/* 탑뷰/그리퍼 바꾸기 — 한 화면에 고른 카메라 하나 (사용자 2026-10-17). 영상을 보는 동안은 점으로 영상이 오는지도 보인다 */}
+            {cams.length > 1 && (
+              <div className="camera__switch" role="group" aria-label={t('camera.switch')}>
+                {cams.map((id) => {
+                  const phase = store.videoPhase(id);
+                  return (
+                    <button
+                      key={id} type="button" className="camera__pick" data-camera={id}
+                      aria-pressed={String(id === camId)} disabled={ended}
+                      onClick={() => store.selectCamera(id)}
+                    >
+                      {phase && <span className="lamp" data-color={phase === 'live' ? 'green' : 'off'} aria-hidden="true" />}
+                      <span>{store.cameraName(id)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {/* 이 PC 카메라는 서버가 켜고 끄지 않는다 */}
             <button
               type="button" className="camera__off" id="btn-camera-off"
               hidden={!streaming || src.transport === 'local'} disabled={cameraBusy}
-              onClick={() => act('camera', () => api.stopCamera())}
+              onClick={() => act('camera', () => store.stopCamera())}
             >
               <span>{t('camera.disconnect')}</span>
             </button>

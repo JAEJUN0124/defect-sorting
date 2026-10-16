@@ -162,3 +162,58 @@ test('시험용 XML 서버 요청안(--extended): 라인 상태가 바뀌고, �
   assert.equal(requestIdOf(await c.next(event('HomeCompleted'), 4000)), 'h3');
   c.ws.close();
 });
+
+test('SetSortTarget(로봇팔이 옮길 부품): v1.0은 속성 target을 몰라 InvalidCommand — 요청안(--extended)은 정지 상태에서만 받고 Line/@sortTarget·이벤트로 알림', { skip: !PY && 'python 없음' }, async (t) => {
+  const replyOf = async (c, id, inner) => X.child(await (c.ws.send(cmd(id, inner)), c.next(type('Reply', id))), 'Reply').attrs;
+  const plain = await connect(await startServer(t, []));
+  assert.equal((await replyOf(plain, 'v1', '<Command name="SetSortTarget" target="Good" />')).code, 'InvalidCommand'); // 실제 서버처럼 속성 검사가 먼저
+  assert.equal((await replyOf(plain, 'v2', '<Command name="SetSortTarget" />')).code, 'UnknownCommand');
+  plain.ws.close();
+
+  const c = await connect(await startServer(t, ['--simulation', '--extended', '--interval-ms', '300']));
+  const line = (m) => X.child(X.child(m, 'Status'), 'Line').attrs;
+  assert.equal(line(await c.next(type('Status'))).sortTarget, 'Defect'); // 처음은 불량품
+  const ok = await replyOf(c, 's1', '<Command name="SetSortTarget" target="Good" />');
+  assert.deepEqual([ok.result, ok.executed, ok.command], ['Received', 'true', 'SetSortTarget']);
+  const ev = await c.next((m) => m.attrs.type === 'Event' && X.child(m, 'Event').attrs.code === 'SortTargetChanged');
+  assert.equal(X.children(X.child(ev, 'Event'), 'Param').find((p) => p.attrs.name === 'target').text, 'Good');
+  assert.ok(await c.next((m) => m.attrs.type === 'Status' && line(m).sortTarget === 'Good'));
+  assert.equal((await replyOf(c, 's2', '<Command name="SetSortTarget" target="Maybe" />')).code, 'InvalidTarget');
+  await replyOf(c, 's3', '<Command name="ProgramStart" />');
+  assert.equal((await replyOf(c, 's4', '<Command name="SetSortTarget" target="Defect" />')).code, 'NotStopped');
+  c.ws.close();
+});
+
+test('시험용 XML 서버 --video: 브릿지 영상 흉내 — 상태 JSON(안내 4장), MJPEG 조각마다 JPEG, 카메라·업로드 끊김 흉내', { skip: !PY && 'python 없음' }, async (t) => {
+  const http = (await startServer(t, ['--video'])).replace(/^ws/, 'http').replace(/\/ws\/hmi$/, '');
+  const status = async (q) => (await fetch(http + (q ? '/video/_sim?' + q : '/video/status'))).json();
+  await new Promise((r) => setTimeout(r, 500)); // 첫 프레임이 들어올 때까지
+  let st = await status();
+  assert.equal(st.connected, true);
+  assert.equal(st.freshnessMs, 5000);
+  assert.deepEqual(st.cameras.map((c) => [c.id, c.available, typeof c.sequence]), [[1, true, 'number'], [2, true, 'number']]);
+  // MJPEG: multipart/x-mixed-replace, 조각마다 Content-Length·X-Sequence와 JPEG
+  const ctrl = new AbortController();
+  const res = await fetch(http + '/video/1.mjpg?t=1', { signal: ctrl.signal });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /^multipart\/x-mixed-replace; boundary=frame/);
+  const reader = res.body.getReader();
+  let buf = Buffer.alloc(0);
+  while (buf.indexOf('X-Sequence') < 0 || buf.indexOf(Buffer.from([0xff, 0xd9])) < 0) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf = Buffer.concat([buf, Buffer.from(value)]);
+  }
+  ctrl.abort();
+  assert.ok(buf.indexOf('--frame') === 0);
+  assert.ok(buf.indexOf(Buffer.from([0xff, 0xd8])) > 0); // JPEG 시작
+  // 카메라 2만 멈추면: 5초 뒤 available=false이고 받은 때는 남음 (화면은 "5초 이상 새 영상 없음")
+  await status('cam=2&on=0');
+  await new Promise((r) => setTimeout(r, 5300));
+  st = await status();
+  assert.deepEqual(st.cameras.map((c) => [c.id, c.available, !!c.receivedAt]), [[1, true, true], [2, false, true]]);
+  // 업로드 연결이 끊기면: connected=false, 받은 때는 null
+  st = await status('link=0');
+  assert.equal(st.connected, false);
+  assert.deepEqual(st.cameras.map((c) => c.receivedAt), [null, null]);
+});

@@ -48,6 +48,11 @@
     auto: ['auto', 'automatic', 'autonomous', 'policy', 'ai', 'autorun', 'automode', '자동'],
     manual: ['manual', 'teleop', 'teleoperation', 'hand', 'jog', 'manualmode', '수동'],
   };
+  // 로봇팔이 옮길 부품 (상태 sortTarget, 사용자 2026-10-17)
+  const SORT = {
+    good: ['good', 'ok', 'pass', 'passed', 'accept', 'accepted', '양품'],
+    defect: ['defect', 'defective', 'ng', 'bad', 'reject', 'rejected', 'fail', '불량', '불량품'],
+  };
   // 공정 단계 (상태 cycle.stage, docs/line-sequence.md 1장)
   const STAGE = {
     feeding: ['feeding', 'feed', 'conveying', 'transport', 'waitingpart', 'waitpart', 'loading', 'moving', 'indexing'],
@@ -409,6 +414,11 @@
       if (homeReq) { const b = bool(homeReq.value); if (b !== null) out.homeRequired = b; }
       const cyc = pick(raw, ['cycle', 'process', 'cyclestate', 'processstage', 'stage'], 'cycle');
       if (cyc) out.cycle = cycle(cyc.value);
+      const sort = pick(raw, ['sorttarget', 'picktarget', 'sortclass', 'pickclass'], 'sort_target');
+      if (sort && typeof sort.value === 'string') {
+        out.sortTarget = mapWord(sort.value, SORT, 'sort_target') || 'unknown';
+        if (out.sortTarget === 'unknown') note('sort_target.unknown:' + sort.value);
+      }
       return out;
     }
 

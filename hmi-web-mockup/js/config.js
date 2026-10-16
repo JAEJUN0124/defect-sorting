@@ -59,13 +59,24 @@ window.HMI_CONFIG = {
 
   // ---- 카메라 ----
   cameras: {
-    primary: 'auto',       // 조작 화면에 띄울 카메라 id. 'auto' = 서버 목록의 첫 번째
+    primary: 'auto',       // 조작 화면에 띄울 카메라 id. 'auto' = 서버 목록의 첫 번째 (브릿지 영상이면 화면의 탑뷰/그리퍼 바꾸기가 정함)
     transport: 'auto',     // 'auto'(서버가 알려 준 방식) · 'mjpeg' · 'snapshot' · 'ws' · 'webrtc' · 'video' · 'local'
     snapshotFps: 5,        // transport가 'snapshot'일 때 초당 장수
     bboxFormat: 'xywh',    // 판정 상자 좌표: 'xywh' · 'xyxy' · 'cxcywh'(YOLO)
     overlay: true,         // 서버가 판정 상자 좌표를 보내면 영상 위에 그림 (서버가 영상에 직접 그리면 false)
-    // 화면에 쓰는 카메라 이름. 서버의 카메라 id를 키로 씁니다
-    labels: { main: '카메라', top: '위 카메라', close: '근접 카메라', side: '옆 카메라', wrist: '손목 카메라', front: '앞 카메라' },
+    // 화면에 쓰는 카메라 이름. 서버의 카메라 id를 키로 씁니다 (top·close는 서버 담당 안내의 탑뷰·그리퍼 카메라, 2026-10-17)
+    labels: { main: '카메라', top: '탑뷰', close: '그리퍼', side: '옆 카메라', wrist: '손목 카메라', front: '앞 카메라' },
+    // 브릿지 서버의 영상 (서버 담당 안내 2026-10-17 — docs/hmi-video-integration.md). XML 서버면 /ws/hmi와 같은 호스트·포트의 HTTP로 받는다.
+    // Status에 Camera가 없고 CameraStart·CameraStop도 없어, HMI가 주소를 직접 열고 닫는다. 카메라 상태는 statusPath(JSON)로만 본다.
+    // 화면을 서버와 다른 주소에서 열면 브라우저가 상태 JSON을 막는다 — 같은 주소로 연다 (메인 서버 · Cloudflare · dev-server.py --server).
+    // null이면 쓰지 않고 예전 방식(Status의 Camera · 카메라 명령)으로 돌아간다
+    bridge: {
+      statusPath: '/video/status',
+      pollMs: 1000,        // 상태를 다시 묻는 간격 — 앞 조회가 끝난 뒤부터 잼 (요청이 겹치지 않게)
+      timeoutMs: 3000,     // 상태 요청 제한 시간. 넘으면 "영상 상태 확인 불가"
+      // HMI 카메라 이름 → 서버 카메라 번호(상태 JSON의 id)와 영상 주소. 먼저 적은 것이 처음 보이는 카메라
+      streams: { top: { id: 1, path: '/video/1.mjpg' }, close: { id: 2, path: '/video/2.mjpg' } },
+    },
     // transport가 'local'일 때 이 PC에 꽂힌 USB 카메라를 직접 띄움 (tools/devices.html에서 고른 값이 저장됨)
     // upload: 서버가 영상을 HMI에서 받아야 할 때 보낼 주소. 예: 'ws://localhost:8000/ws/camera/{id}/upload'
     local: { upload: null, uploadFps: 10, quality: 0.8 },

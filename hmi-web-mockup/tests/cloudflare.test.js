@@ -94,6 +94,31 @@ test('worker: 서버가 101로 받으면 브라우저 쪽 웹소켓을 따로 �
   assert.deepEqual(server.closed, { code: 1001, reason: 'bye' });
 });
 
+test('worker: 카메라 영상 세 경로(/video/status · /video/1.mjpg · /video/2.mjpg)만 터널로 — 서비스 토큰을 붙이고 사람의 쿠키는 안 넘김, ?t=는 그대로', async (t) => {
+  const worker = await loadWorker();
+  const { env, calls } = setup(t);
+  const get = (p, headers) => worker.fetch(new Request('https://hmi.example.net' + p, { headers }), env);
+  assert.equal(await get('/video/status', { Cookie: 'CF_Authorization=person-token' }), UPSTREAM);
+  assert.equal(await get('/video/1.mjpg?t=123'), UPSTREAM);
+  assert.equal(await get('/video/2.mjpg'), UPSTREAM);
+  assert.deepEqual(calls.fetch.map((c) => c.url), [
+    'https://hmi-origin.example.net/video/status',
+    'https://hmi-origin.example.net/video/1.mjpg?t=123',
+    'https://hmi-origin.example.net/video/2.mjpg',
+  ]);
+  calls.fetch.forEach(({ headers }) => {
+    assert.equal(headers.get('cf-access-client-id'), 'id-1');
+    assert.equal(headers.get('cf-access-client-secret'), 'secret-1');
+    assert.equal(headers.get('cookie'), null);
+  });
+  // 서버가 내주는 확인 화면(/video)·없는 카메라·업로드 경로(/ws/video)는 넘기지 않는다
+  for (const p of ['/video', '/video/3.mjpg', '/ws/video']) await get(p);
+  assert.deepEqual(calls.assets, ['/video', '/video/3.mjpg', '/ws/video']);
+  assert.equal(calls.fetch.length, 3);
+  const post = await worker.fetch(new Request('https://hmi.example.net/video/status', { method: 'POST' }), env);
+  assert.equal(post.status, 405);
+});
+
 test('worker: 웹소켓이 아닌 /ws/hmi는 426, 다른 /ws/ 경로는 터널로 보내지 않음 (메인 서버의 다른 경로는 밖에 열지 않는다)', async (t) => {
   const worker = await loadWorker();
   const { env, calls } = setup(t);

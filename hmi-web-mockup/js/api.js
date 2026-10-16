@@ -229,5 +229,7 @@
     setMode: (mode) => call('mode', { mode: xml ? mode : modeValue(mode) }),
     startCamera: (camera) => call('cameraStart', camera ? { camera } : undefined),
     stopCamera: (camera) => call('cameraStop', camera ? { camera } : undefined),
+    // 로봇팔이 옮길 부품: 'good'(양품) · 'defect'(불량품). XML은 SetSortTarget target="Good|Defect", JSON은 PUT /sort-target
+    setSortTarget: (target) => call('sortTarget', { target }),
   };
 })();

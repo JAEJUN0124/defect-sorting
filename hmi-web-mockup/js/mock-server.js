@@ -1,6 +1,7 @@
-// 가짜 서버 — docs/API.md v0.4 의 동작을 브라우저 안에서 흉내 냅니다 (실제 서버가 준비되기 전 개발용).
+// 가짜 서버 — docs/API.md v0.6 의 동작을 브라우저 안에서 흉내 냅니다 (실제 서버가 준비되기 전 개발용).
 // 공정 순서는 docs/line-sequence.md의 "부품마다 멈춤"입니다. 컨베이어는 가짜 아두이노(js/conveyor.js)를 규약 그대로 써서 움직이고,
-// 불량품은 로봇팔 작업(docs/arm-control.md — 정해 둔 자세와 학습 정책을 섞은 예)으로 불량 상자에 옮깁니다.
+// 화면에서 고른 쪽(로봇팔이 옮길 부품 — 양품 또는 불량품, 처음은 불량품)을 로봇팔 작업(docs/arm-control.md — 정해 둔 자세와 학습 정책을
+// 섞은 예)으로 상자에 옮기고, 다른 쪽은 내보냅니다.
 // 로봇팔은 키트 구성(팔로워 12V · 리더 7.4V급, 서보 6개씩)대로 각도·온도·전압·부하를 만들어 보내고,
 // 카메라 두 대(위·근접)와 판정 상자·신뢰도·판정 시간, 지난 기록(GET /history)도 냅니다. 실제 서버를 만들 때 동작 견본으로 쓸 수 있습니다.
 // 실제 서버가 생기면 config.js의 useMock을 false로 바꾸면 이 파일은 쓰이지 않습니다.
@@ -31,9 +32,10 @@
   };
   // 그리퍼: 여는 값·닫는 값, 이보다 더 닫히면 빈손(holdingMin), 부품 폭(닫히다가 부품에 막히는 값)
   const GRIP = { open: 70, close: 5, holdingMin: 12, partWidth: 18 };
-  // 작업 = 단계 목록. 다가가기·옮기기는 정해 둔 자세로, 집기만 학습 정책으로 하는 예
+  // 작업 = 단계 목록. 다가가기·옮기기는 정해 둔 자세로, 집기만 학습 정책으로 하는 예.
+  // sort_part: 로봇팔이 옮길 부품(sort_target)으로 판정된 부품을 상자에 옮긴다
   const TASKS = {
-    sort_defect: {
+    sort_part: {
       retry: { times: 1, from: 0 },
       steps: [
         { pose: 'above_pick' },
@@ -94,6 +96,7 @@
         // 원점 복귀가 필요한지(긴급정지·로봇팔 고장 뒤)는 서버가 안다. 가짜 서버는 팔이 대기 자세로 켜진다고 본다
         home_required: false,
         cycle: null,
+        sort_target: 'defect', // 로봇팔이 옮길 부품: 'good' · 'defect' (v0.6, 사용자 2026-10-17). 처음은 예전처럼 불량품
         devices: { conveyor: 'connected', arm: 'connected', leader: 'connected', camera_top: 'connected', camera_close: 'connected' },
         stats: { total: 0, good: 0, defect: 0 },
         cameras: Object.fromEntries(CAMERAS.map((id) => [id, { streaming: false, url: null, transport: 'mock' }])),
@@ -140,7 +143,7 @@
     // 다른 탭이 가짜 서버를 넘겨받을 때 마지막 상태에서 이어 간다 (mock-hub.js)
     restore(seed) {
       const s = this.state;
-      ['line', 'estop', 'mode', 'fault', 'started_at', 'home_required'].forEach((k) => { if (seed[k] !== undefined) s[k] = seed[k]; });
+      ['line', 'estop', 'mode', 'fault', 'started_at', 'home_required', 'sort_target'].forEach((k) => { if (seed[k] !== undefined) s[k] = seed[k]; });
       if (!['stopped', 'running'].includes(s.line)) s.line = 'stopped';
       if (s.line === 'running') s.cycle = { stage: 'feeding', part: null, step: null }; // 다루던 부품은 이어 가지 않는다
       if (seed.devices) Object.assign(s.devices, seed.devices);
@@ -369,9 +372,10 @@
       this.emit('inspection', data);
       if (result === 'defect') this.event('defect_detected', 'warning', { id });
       if (s.mode !== 'auto' || !s.cycle) return; // 수동 모드는 사람이 리더암으로 집는다
-      if (result === 'defect') {
+      // 로봇팔이 옮길 부품으로 고른 쪽이면 상자에 옮기고, 다른 쪽은 내보낸다
+      if (result === s.sort_target) {
         this.setCycle('sorting', id);
-        this.startTask('sort_defect', id);
+        this.startTask('sort_part', id);
       } else {
         this.setCycle('passing', id);
         this.conveyor('run');
@@ -380,14 +384,14 @@
       }
     }
 
-    // 양품이 검사 자리를 지나가지 않음 (걸림)
+    // 내보내는 부품이 검사 자리를 지나가지 않음 (걸림)
     partStuck(id) {
       const s = this.state;
       if (s.line !== 'running' || !s.cycle || s.cycle.stage !== 'passing') return;
       this.trip('PART_STUCK', { part: id }, 'start');
     }
 
-    // 불량품을 옮긴 뒤: 내보낼 부품이 없으니 바로 다음 부품을 기다린다. 정지를 눌렀으면 여기서 멈춘다
+    // 부품을 상자에 옮긴 뒤: 내보낼 부품이 없으니 바로 다음 부품을 기다린다. 정지를 눌렀으면 여기서 멈춘다
     afterSort() {
       const s = this.state;
       if (s.line === 'stopping') { this.finishStop(); return; }
@@ -785,15 +789,15 @@
 
     'GET /info'() {
       return ok({
-        api: '0.5',
-        server: { name: 'mock-server', version: '0.5.0' },
+        api: '0.6',
+        server: { name: 'mock-server', version: '0.6.0' },
         joint_unit: 'deg',
         cameras: [
           { id: 'top', transport: 'mock', width: 1280, height: 720, fps: 30 },
           { id: 'close', transport: 'mock', width: 1280, height: 720, fps: 30 },
         ],
         arms: { arm: { role: 'follower' }, leader: { role: 'leader' } },
-        features: ['telemetry', 'metrics', 'inspection_bbox', 'multi_camera', 'history', 'cycle', 'home'],
+        features: ['telemetry', 'metrics', 'inspection_bbox', 'multi_camera', 'history', 'cycle', 'home', 'sort_target'],
       });
     },
 
@@ -932,6 +936,20 @@
         s.mode = body.mode;
         this.pushStatus();
         this.event('mode_changed', 'info', { mode: body.mode });
+      }
+      return ok(this.snapshot());
+    },
+
+    // 로봇팔이 옮길 부품 (v0.6): 정지 상태에서만 바꾼다 — 운전 모드와 같은 규칙 (사용자 2026-10-17)
+    'PUT /sort-target'(body) {
+      const s = this.state;
+      if (body.target !== 'good' && body.target !== 'defect') return fail(422, 'INVALID_SORT_TARGET');
+      if (s.estop) return fail(409, 'ESTOP_ACTIVE');
+      if (s.line !== 'stopped') return fail(409, 'NOT_STOPPED');
+      if (s.sort_target !== body.target) {
+        s.sort_target = body.target;
+        this.pushStatus();
+        this.event('sort_target_changed', 'info', { target: body.target });
       }
       return ok(this.snapshot());
     },

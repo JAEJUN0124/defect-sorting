@@ -3,7 +3,8 @@
 불량품 감지 시스템의 조작 화면입니다. 최종 형태는 웹으로 확정했고, 화면은 React(`react/`)로 만듭니다.
 대시보드(감시 화면) 두 개는 없애고 조작 화면 하나만 React로 옮겼습니다 (사용자 2026-10-17). 옛 화면은 git 기록과 [docs/v1-snapshot/](../docs/v1-snapshot/)에 있습니다.
 실제 서버와는 **웹소켓 하나로 XML을 주고받습니다** — 서버 담당의 규약 v1.0([docs/server-xml-v1.0.md](../docs/server-xml-v1.0.md)), HMI 쪽 사용법과 요청안([docs/xml-protocol.md](../docs/xml-protocol.md)).
-서버 PC가 없을 때는 브라우저 안의 가짜 서버(`js/mock-server.js`, 기본값 `useMock: true`)가 [API 초안 v0.5](../docs/API.md)(HTTP·JSON)대로 응답합니다.
+서버 PC가 없을 때는 브라우저 안의 가짜 서버(`js/mock-server.js`, 기본값 `useMock: true`)가 [API 초안 v0.6](../docs/API.md)(HTTP·JSON)대로 응답합니다.
+카메라 영상은 XML이 아니라 같은 서버의 HTTP 주소(`/video/1.mjpg` 탑뷰 · `/video/2.mjpg` 그리퍼 · `/video/status`)에서 받습니다 — 서버 담당 안내 [docs/hmi-video-integration.md](../docs/hmi-video-integration.md), HMI 쪽 [xml-protocol 8장](../docs/xml-protocol.md#8-카메라-영상--서버의-http-주소에서-따로-받음-서버-안내-2026-10-17).
 서버가 컨베이어·로봇팔과 주고받는 약속은 [컨베이어 시리얼 규약](../docs/conveyor-protocol.md) · [로봇팔 제어 약속](../docs/arm-control.md) · [공정 순서](../docs/line-sequence.md)에 있습니다.
 실제 서버에 붙일 때는 [서버 점검](tools/server-check.html)(형식 XML)으로 먼저 확인한 뒤 `js/config.js`를 맞춥니다.
 로봇팔 키트(SO-ARM101 기반)에 맞춘 값과 설치 순서는 [로봇팔 문서](../docs/robot-arm.md)에 있습니다.
@@ -46,14 +47,16 @@ python hmi-web-mockup/tools/dev-server.py 5173
 | `http://localhost:5173/tools/devices.html` | 장치 점검 — 로봇팔 서보·자세 저장·USB 카메라·컨베이어(아두이노) 규약 점검 (설치·고장 확인용) |
 | `http://localhost:5173/tools/server-check.html` | 서버 점검 — 서버 형식 확인과 `config.js` 제안 값 |
 
-다른 PC에서도 열려면 이 PC의 장비망 주소로 받게 띄웁니다 (미리보기 설정의 `hmi-web-mockup-lan`과 같음).
-서버가 이 PC의 IPv4 주소를 알려 주고, 다른 PC는 `http://<이 PC 주소>:8080/?mock=0&ws=ws://<서버 주소>:5080/ws/hmi`로 엽니다 (빌드한 조작 화면).
-같은 망에 있어야 하고(브라우저가 서버에 직접 붙음), Windows 방화벽이 Python의 접속을 막으면 허용해야 합니다. 인증이 없으니 믿을 수 있는 망에서만 씁니다.
+다른 PC에서도 열려면 이 PC의 장비망 주소로 받게 띄우고, `--server`로 메인 서버를 이어 줍니다 (미리보기 설정의 `hmi-web-mockup-lan`과 같음).
+서버가 이 PC의 IPv4 주소를 알려 주고, 다른 PC는 `http://<이 PC 주소>:8080/?mock=0&ws=auto`로 엽니다 (빌드한 조작 화면).
+이 개발용 서버가 `/ws/hmi`(웹소켓)와 카메라 영상(`/video/…`)을 메인 서버로 그대로 이어, 화면과 서버가 같은 주소가 됩니다 — 메인 서버에는 CORS가 없어 다른 주소에서는 브라우저가 영상 상태 JSON을 막습니다 (서버 안내 8장).
+예전 주소 `…/?mock=0&ws=ws://<서버 주소>:5080/ws/hmi`도 XML은 그대로 되지만 카메라는 "영상 상태 확인 불가"로 남습니다.
+Windows 방화벽이 Python의 접속을 막으면 허용해야 합니다. 인증이 없으니 믿을 수 있는 망에서만 씁니다.
 (2026-10-17 React로 옮기기 전 화면이 다른 PC에서 실제 서버에 붙는 것을 확인 — 사용자. React 화면은 이 PC에서 같은 주소 형식(`localhost:8080`)으로 실제 서버에 붙는 것까지 확인.
-Claude 앱 안의 브라우저는 이 PC의 장비망 주소에서 서버로 나가는 접속을 막아 확인에 쓸 수 없음)
+`--server` 중계는 시험용 XML 서버로만 확인. Claude 앱 안의 브라우저는 이 PC의 장비망 주소에서 서버로 나가는 접속을 막아 확인에 쓸 수 없음)
 
 ```bash
-python hmi-web-mockup/tools/dev-server.py 8080 --host 0.0.0.0
+python hmi-web-mockup/tools/dev-server.py 8080 --host 0.0.0.0 --server http://10.108.108.98:5080
 ```
 
 ### 메인 서버에 올리기
@@ -72,7 +75,7 @@ python hmi-web-mockup/tools/make-server-bundle.py hmi-main-server.zip
 
 ### 밖에서 열기 (Cloudflare)
 
-장비망 밖에서는 `https://hmi.hypefree.net/`으로 엽니다. 화면 파일은 Cloudflare Worker가 내주고, `/ws/hmi` 웹소켓만 Cloudflare Tunnel을 거쳐 메인 서버로 갑니다. 앞에는 Cloudflare Access(허락한 이메일만)가 있습니다. 서버 코드는 바꾸지 않습니다.
+장비망 밖에서는 `https://hmi.hypefree.net/`으로 엽니다. 화면 파일은 Cloudflare Worker가 내주고, `/ws/hmi` 웹소켓과 카메라 영상 세 경로(`/video/status`·`/video/1.mjpg`·`/video/2.mjpg`)만 Cloudflare Tunnel을 거쳐 메인 서버로 갑니다. 앞에는 Cloudflare Access(허락한 이메일만)가 있습니다. 서버 코드는 바꾸지 않습니다.
 구조, 대시보드 설정, 안 될 때는 [docs/cloudflare.md](../docs/cloudflare.md)에 있습니다.
 
 ```bash
@@ -95,7 +98,7 @@ npm --prefix hmi-web-mockup/cloudflare run deploy
 | `?format=json&api=…&push=…` | 예전 JSON 서버 (`push`: `socketio` · `sse` · `poll`) |
 
 XML 서버 없이 XML 연결을 시험하려면 시험용 XML 서버(서버 v1.0 흉내, 실제 서버 아님)를 띄웁니다. 서버 담당 회신(2026-10-16)으로 더해진 것(원점 각도 검사·긴급정지 해제 받기)까지 흉내 냅니다.
-`--simulation`은 값이 움직이고, `--extended`는 [요청안](../docs/xml-protocol.md#4-서버에-요청할-것-v10-다음-제안)도 흉내 냅니다.
+`--simulation`은 값이 움직이고, `--extended`는 [요청안](../docs/xml-protocol.md#4-서버에-요청할-것-v10-다음-제안)(로봇팔이 옮길 부품 `SetSortTarget` 포함)도 흉내 냅니다.
 
 ```bash
 python hmi-web-mockup/tests/xml-server.py 5080 --simulation
@@ -103,11 +106,18 @@ python hmi-web-mockup/tests/xml-server.py 5080 --simulation
 
 그다음 `http://localhost:5174/?mock=0&ws=ws://localhost:5080/ws/hmi`.
 
+카메라까지 보려면 `--video`(서버 안내의 영상 흉내 — 시험 화면을 초당 5장)와 `--static`(화면을 같은 주소로 내줌 — 영상 상태 JSON을 브라우저가 막지 않게)을 붙이고, 빌드한 뒤 `http://localhost:5092/`을 엽니다 (미리보기 설정 `xml-server-video`).
+끊김은 `curl "http://127.0.0.1:5092/video/_sim?cam=2&on=0"`(카메라 2 업로드 멈춤)·`?link=0`(설비 업로드 연결 끊김)으로 만들고 `on=1`·`link=1`로 되돌립니다.
+
+```bash
+python hmi-web-mockup/tests/xml-server.py 5092 --simulation --extended --video --static hmi-web-mockup/react/dist
+```
+
 가짜 서버는 조작 화면을 여러 창에 띄워도 **하나를 나눠 씁니다** (`js/mock-hub.js`). 화면에 보이는 탭이 서버를 맡고,
 그 탭을 닫거나 다른 탭이 보이면 마지막 상태에서 이어 갑니다.
 
 가짜 서버는 [공정 순서](../docs/line-sequence.md)의 "부품마다 멈춤"대로 돕니다. 가짜 컨베이어(`js/conveyor.js`의 가짜 아두이노, 규약 그대로)가 부품을 검사 자리로 옮겨 멈추면 판정하고,
-양품은 내보내며 불량품은 로봇팔 작업(정해 둔 자세 + 학습 정책 흉내)으로 불량 상자에 옮깁니다. 지난 기록(`GET /history`)도 답해서, 화면을 새로 열거나 다시 연결되면 로그가 채워집니다.
+로봇팔이 옮길 부품으로 고른 쪽(처음은 불량품)은 로봇팔 작업(정해 둔 자세 + 학습 정책 흉내)으로 상자에 옮기고 다른 쪽은 내보냅니다. 지난 기록(`GET /history`)도 답해서, 화면을 새로 열거나 다시 연결되면 로그가 채워집니다.
 
 개발 화면 아래쪽 장치 버튼을 누르면 그 장치의 연결 끊김을 흉내 냅니다. 컨베이어 버튼은 USB를 뽑은 것처럼 응답을 끊어, 서버 쪽 견본이 응답 없음 3번으로 알아채게 합니다.
 서보 과열·전압 이상(리더에 12V)·판정 지연·집기 실패·부품 걸림·컨베이어 정지 단추 흉내는 가짜 서버(`js/mock-server.js`)에 남아 있지만, 누르는 단추는 대시보드와 함께 없앴습니다 (시험 `tests/mock-server.test.js`에서 씀).
@@ -123,8 +133,9 @@ python hmi-web-mockup/tests/xml-server.py 5080 --simulation
 | F-02 | EMS / 긴급정지 | 노란 판 위 빨간 버튼. 해제는 "긴급정지 해제" → 확인 창 |
 | F-03 | 프로그램 종료 | 조작반 맨 아래. 확인 창 → HMI만 닫고 종료 화면. 서버에는 보내지 않아 라인과 장비는 그대로 (장비 정지는 정지 키·긴급정지) |
 | F-04 | 원점 복귀 · 원점 잡기 | 시작 키 아래 두 키. 원점은 **이 HMI(브라우저)가 저장**합니다 (`js/home.js`, [xml-protocol 3장](../docs/xml-protocol.md#3-원점--hmi가-저장-사용자-2026-10-14)). **원점 잡기**: 수동 모드에서(가동 중에도) 리더암으로 로봇팔을 원하는 자세에 둔 뒤 누르면 확인 창을 거쳐 그 자세를 원점으로 저장. **원점 복귀**: 자동 모드·정지 상태에서 저장된 원점 각도를 서버에 보내 이동. 다른 모드에서는 키가 잠기고, 마우스를 올리면 이유가 보임 |
-| F-05 | 카메라 연결 | 오른쪽 큰 화면 가운데 버튼. 연결되면 주 카메라 영상 + 판정 상자, 오른쪽 위 "카메라 끄기" (이 PC의 USB 카메라는 끄기 없음) |
+| F-05 | 카메라 연결 | 오른쪽 큰 화면 가운데 버튼. 연결되면 영상 + 판정 상자, 왼쪽 위 탑뷰·그리퍼 바꾸기(화면 하나, 점이 초록이면 그 카메라 영상이 옴), 오른쪽 위 "카메라 끄기". 실제 서버(XML)에서는 서버의 MJPEG를 직접 받고 `/video/status`를 1초마다 물어 끊기면 영상을 숨기고 이유를 씀 — "설비 영상 연결 대기" · "영상 미수신" · "5초 이상 새 영상 없음" · "영상 상태 확인 불가" ([xml-protocol 8장](../docs/xml-protocol.md#8-카메라-영상--서버의-http-주소에서-따로-받음-서버-안내-2026-10-17)). 카메라 끄기는 이 화면의 영상만 닫음 (이 PC의 USB 카메라는 끄기 없음) |
 | F-06 | 운전 모드 전환 | 자동 / 수동. 정지 상태에서만. 수동이면 리더암 각도 표시 |
+| 추가 | 로봇팔이 옮길 부품 | 운전 모드 아래 "양품"·"불량품" 두 키 (사용자 2026-10-17). 정지 상태에서만. 누르면 서버에 보내고(XML `SetSortTarget` — 지금 서버 v1.0은 받지 않아 그렇다고 안내), 서버가 알려 준 값이 눌린 모양. 서버가 값을 보내지 않으면 이 브라우저에서 마지막으로 서버가 받은 값을 보임. 자동 가동 중 상태 설명도 고른 쪽으로 ("로봇팔이 양품을 골라냅니다") |
 
 추가 기능
 - **생산 통계**: 카메라 아래 검사·양품·불량·불량률
@@ -163,15 +174,16 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 
 | 시험 | 내용 |
 |---|---|
-| `tests/config.test.js` | 메인 서버에 올렸을 때의 서버 주소(`wsUrl: 'auto'`), 메인 서버용 묶음(React 빌드 포함 — `react/`에서 `npm install`을 안 했으면 건너뜀)과 Cloudflare용 폴더(`--dir`, 다시 쓸 때 지난 파일 지우기·남의 폴더는 안 지움), 개발용 서버의 배치 |
-| `tests/cloudflare.test.js` | 밖에서 여는 HMI: Worker가 `/ws/hmi` 웹소켓만 서비스 토큰을 붙여 터널로 넘기고(사람의 쿠키는 안 넘김) 나머지는 화면 파일로 돌리는지, 서버가 101로 받으면 양쪽 웹소켓 사이에서 메시지·닫힘을 옮기는지, 토큰이 비면 500, 배포 설정이 `*.workers.dev`·미리 보기 주소를 열지 않는지, wrangler 판 고정, `set-token.py`가 확실히 틀린 값(글자 그대로·터널 토큰·머리말)을 거절하는지 |
+| `tests/config.test.js` | 메인 서버에 올렸을 때의 서버 주소(`wsUrl: 'auto'`), 메인 서버용 묶음(React 빌드 포함 — `react/`에서 `npm install`을 안 했으면 건너뜀)과 Cloudflare용 폴더(`--dir`, 다시 쓸 때 지난 파일 지우기·남의 폴더는 안 지움), 개발용 서버의 배치와 `--server`(웹소켓·영상을 메인 서버로 그대로 잇기) |
+| `tests/cloudflare.test.js` | 밖에서 여는 HMI: Worker가 `/ws/hmi` 웹소켓과 영상 세 경로만 서비스 토큰을 붙여 터널로 넘기고(사람의 쿠키는 안 넘김) 나머지는 화면 파일로 돌리는지, 서버가 101로 받으면 양쪽 웹소켓 사이에서 메시지·닫힘을 옮기는지, 토큰이 비면 500, 배포 설정이 `*.workers.dev`·미리 보기 주소를 열지 않는지, wrangler 판 고정, `set-token.py`가 확실히 틀린 값(글자 그대로·터널 토큰·머리말)을 거절하는지 |
+| `tests/video.test.js` | 카메라 영상(서버 안내): 영상 주소를 웹소켓 서버의 호스트·포트로 만드는지, 상태 JSON을 화면 단계(연결 대기·미수신·5초 넘게 없음·영상·확인 불가)로 나누는지, 상태 묻기가 겹치지 않고 제한 시간·숨은 탭을 지키는지 |
 | `tests/adapter.test.js` | 서버가 보낼 수 있는 형식 변형(이름·단위·묶음·시각·판정·상자·이벤트·오류)이 같은 모양이 되는지 |
 | `tests/transport.test.js` | WebSocket·Socket.IO·SSE·폴링, HTTP·웹소켓 명령, FastAPI 오류 |
-| `tests/xml.test.js` | XML 읽기·쓰기, 서버 규약 v1.0 메시지(서버 문서 예시 그대로)와 요청안 메시지, XML 명령 보내기와 답 찾기(id로 찾고 답에 있는 명령 이름·목표 모드만 비교, 응답 미확인), 연결 확인 Ping, 연결 닫기 |
+| `tests/xml.test.js` | XML 읽기·쓰기, 서버 규약 v1.0 메시지(서버 문서 예시 그대로)와 요청안 메시지(로봇팔이 옮길 부품 포함), XML 명령 보내기와 답 찾기(id로 찾고 답에 있는 명령 이름·목표 모드만 비교, 응답 미확인), 연결 확인 Ping, 연결 닫기 |
 | `tests/home.test.js` | 원점 저장 (브라우저 저장소, 저장소가 막힌 경우) |
-| `tests/store.test.js` | 화면 공통 상태: 기록 조회가 없는 서버에 다시 붙으면 이벤트 순번을 잊는지(서버 재시작), 상태가 오래 안 오면 묻는지, 원점 잡기 때 각도가 오래됐으면 묻는지, 끊김 판단(Ping 간격보다 짧게 잡지 않음), 프로그램 종료 때 연결을 닫는지 |
-| `tests/xml-server.test.js` · `tests/xml-server.py` | 시험용 XML 서버(서버 v1.0과 회신으로 더해진 것 흉내, `--extended`는 요청안)가 규약대로 답하는지 — 파이썬이 없으면 건너뜀 |
-| `tests/mock-server.test.js` | 가짜 서버가 API v0.5와 공정 순서대로 움직이는지 (부품마다 멈춤·로봇팔 작업·집기 실패·긴급정지 뒤 원점 복귀(HMI가 보낸 각도)·컨베이어 정지 단추·부품 걸림·감시 타이머·USB 끊김·기록 조회·과열·전압·카메라) |
+| `tests/store.test.js` | 화면 공통 상태: 기록 조회가 없는 서버에 다시 붙으면 이벤트 순번을 잊는지(서버 재시작), 상태가 오래 안 오면 묻는지, 원점 잡기 때 각도가 오래됐으면 묻는지, 끊김 판단(Ping 간격보다 짧게 잡지 않음), 프로그램 종료 때 연결을 닫는지, 로봇팔이 옮길 부품(서버 값 → 없으면 기억한 값, 서버가 모를 때 문구), 카메라 영상(카메라 명령 없이 켜고 끄기·바꾸기) |
+| `tests/xml-server.test.js` · `tests/xml-server.py` | 시험용 XML 서버(서버 v1.0과 회신으로 더해진 것 흉내, `--extended`는 요청안, `--video`는 서버 안내의 영상)가 규약대로 답하는지 — 파이썬이 없으면 건너뜀. 영상 시험 화면은 `tests/fixtures/video-*.jpg` |
+| `tests/mock-server.test.js` | 가짜 서버가 API v0.6과 공정 순서대로 움직이는지 (부품마다 멈춤·로봇팔이 옮길 부품·로봇팔 작업·집기 실패·긴급정지 뒤 원점 복귀(HMI가 보낸 각도)·컨베이어 정지 단추·부품 걸림·감시 타이머·USB 끊김·기록 조회·과열·전압·카메라) |
 | `tests/conveyor.test.js` | 컨베이어 시리얼 규약: 서버 쪽 견본과 가짜 아두이노가 규약대로 주고받는지(잠금·감시 타이머·스스로 멈추기·끊김과 리셋), 규약 점검이 맞게 판정하는지 |
 | `tests/feetech.test.js` | 서보 통신 묶음·검사합·해석, 가짜 서보 6개 읽기 |
 | `tests/variant-server.py` | 형식이 다른 서버를 흉내 내는 시험용 서버 (브라우저로 직접 확인할 때) — [대응표 14장](../docs/server-cases.md#14-하나도-안-맞을-때--직접-더하기) |
@@ -193,15 +205,16 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 | `js/api.js` | 명령 목록과 서버 연결 (가짜 서버·실제 서버 바꿔 끼움, XML 명령은 id로 답을 찾음) |
 | `js/home.js` | 원점 저장 (이 브라우저, 창끼리 공유) |
 | `js/store.js` | 화면이 쓰는 상태: 연결 끊김 판단·상태 합치기·통계·서보 경고·원점 잡기/복귀·문구 |
-| `js/camera.js` | 카메라 영상 (MJPEG·스냅샷·웹소켓·WebRTC·video·이 PC 카메라)과 판정 상자 겹침 |
+| `js/camera.js` | 카메라 영상 (서버 안내의 영상(`bridge`)·MJPEG·스냅샷·웹소켓·WebRTC·video·이 PC 카메라)과 판정 상자 겹침 |
+| `js/video.js` | 서버 안내의 카메라 영상: 영상 주소 만들기, 상태 JSON(`/video/status`)을 화면 단계로 나누기, 상태를 겹치지 않게 묻기 |
 | `js/mock-server.js` · `js/mock-hub.js` | 가짜 서버(공정 순서·로봇팔 작업·기록 조회)와 창 사이 공유 (실제 서버 연결 전 개발용) |
 | `js/conveyor.js` | 컨베이어 시리얼 규약 — 서버 쪽 견본, 가짜 아두이노, 규약 점검 ([docs/conveyor-protocol.md](../docs/conveyor-protocol.md)) |
 | `js/feetech.js` | 로봇팔 서보(Feetech STS) 읽기 — 장치 점검용 |
 | `tools/devices.html` · `tools/server-check.html` | 장치 점검(서보·자세 저장·카메라·컨베이어 규약 점검) · 서버 점검(XML: 연결·GetStatus·Ping·상태 간격, JSON: 기록 조회·순번·공정 단계 포함) (개발·설치용) |
 | `tools/simplicity-audit.js` | 심플함 측정 도구 ([결과 보고서](../docs/simplicity-report.md)) |
-| `tools/dev-server.py` | 캐시를 끈 개발용 정적 서버 (`/`는 빌드한 조작 화면 — 메인 서버 묶음과 같은 배치) |
+| `tools/dev-server.py` | 캐시를 끈 개발용 정적 서버 (`/`는 빌드한 조작 화면 — 메인 서버 묶음과 같은 배치). `--server http://<메인 서버>:5080`이면 `/ws/hmi`와 `/video/…`를 메인 서버로 그대로 이음 |
 | `tools/make-server-bundle.py` | 메인 서버용 묶음 (React 빌드 + 점검 페이지 → `wwwroot/`). `--dir`이면 zip 대신 폴더로 (Cloudflare에 올리는 화면 파일) |
-| `cloudflare/` | 밖에서 여는 HMI ([docs/cloudflare.md](../docs/cloudflare.md)): `worker.js`(화면 파일 + `/ws/hmi`만 터널로), `wrangler.jsonc`(배포 설정), `package.json`(wrangler 판 고정, `npm run deploy` · `dev`), `set-token.py`(서비스 토큰을 시험하고 Worker에 넣기), `.dev.vars.example`(이 PC 시험용 값) |
+| `cloudflare/` | 밖에서 여는 HMI ([docs/cloudflare.md](../docs/cloudflare.md)): `worker.js`(화면 파일 + `/ws/hmi`와 영상 세 경로만 터널로), `wrangler.jsonc`(배포 설정), `package.json`(wrangler 판 고정, `npm run deploy` · `dev`), `set-token.py`(서비스 토큰을 시험하고 Worker에 넣기), `.dev.vars.example`(이 PC 시험용 값) |
 
 ## 디자인 원칙
 

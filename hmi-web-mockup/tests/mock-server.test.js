@@ -1,5 +1,5 @@
 // 가짜 서버(js/mock-server.js) 시험 — 실행: node --test "hmi-web-mockup/tests/*.test.js"
-// 실제 서버를 만들 때 동작 견본으로 쓰므로, 문서(docs/API.md v0.5 · docs/line-sequence.md)에 적은 규칙대로 움직이는지 본다.
+// 실제 서버를 만들 때 동작 견본으로 쓰므로, 문서(docs/API.md v0.6 · docs/line-sequence.md)에 적은 규칙대로 움직이는지 본다.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -44,12 +44,12 @@ async function startLine(server) {
   return r;
 }
 
-test('서버 정보와 상태 모양 (v0.5)', async (t) => {
+test('서버 정보와 상태 모양 (v0.6)', async (t) => {
   const { server } = setup(t);
   const info = await server.request('GET', '/info');
-  assert.equal(info.body.api, '0.5');
+  assert.equal(info.body.api, '0.6');
   assert.deepEqual(info.body.cameras.map((c) => c.id), ['top', 'close']);
-  assert.ok(['history', 'cycle', 'home'].every((f) => info.body.features.includes(f)));
+  assert.ok(['history', 'cycle', 'home', 'sort_target'].every((f) => info.body.features.includes(f)));
   const st = (await server.request('GET', '/status')).body;
   assert.deepEqual(Object.keys(st.devices), ['conveyor', 'arm', 'leader', 'camera_top', 'camera_close']);
   assert.deepEqual(Object.keys(st.cameras), ['top', 'close']);
@@ -57,6 +57,33 @@ test('서버 정보와 상태 모양 (v0.5)', async (t) => {
   assert.equal(st.home_required, false);
   assert.equal(st.cycle, null);
   assert.equal(st.home, undefined); // 원점은 서버가 아니라 HMI가 저장한다 (v0.5)
+  assert.equal(st.sort_target, 'defect'); // 로봇팔이 옮길 부품 — 처음은 불량품 (v0.6)
+});
+
+test('로봇팔이 옮길 부품(PUT /sort-target): 양품·불량품만, 정지 상태에서만 — 가동·긴급정지 중에는 거절, 바뀌면 이벤트', async (t) => {
+  const { server, events } = setup(t);
+  assert.equal((await server.request('PUT', '/sort-target', { target: 'ok' })).body.error.code, 'INVALID_SORT_TARGET');
+  const r = await server.request('PUT', '/sort-target', { target: 'good' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.sort_target, 'good');
+  assert.ok(events().includes('sort_target_changed:info'));
+  await startLine(server);
+  assert.equal((await server.request('PUT', '/sort-target', { target: 'defect' })).body.error.code, 'NOT_STOPPED');
+  await server.request('POST', '/estop');
+  assert.equal((await server.request('PUT', '/sort-target', { target: 'defect' })).body.error.code, 'ESTOP_ACTIVE');
+  assert.equal(server.state.sort_target, 'good');
+});
+
+test('로봇팔이 옮길 부품을 양품으로 고르면: 양품을 로봇팔이 상자에 옮기고, 불량품은 내보낸다', async (t) => {
+  const { server, got, stages } = setup(t);
+  await server.request('PUT', '/sort-target', { target: 'good' });
+  await startLine(server);
+  assert.ok(await until(() => stages().includes('sorting')), stages().join()); // 양품(불량은 일부러 낼 때만)을 옮긴다
+  assert.equal(got.find((m) => m.type === 'inspection').data.result, 'good');
+  assert.ok(!stages().includes('passing'));
+  server.simulate('defect', true); // 다음 판정은 불량 — 내보낸다
+  assert.ok(await until(() => stages().includes('passing'), 5000), stages().join());
+  assert.ok(got.some((m) => m.type === 'inspection' && m.data.result === 'defect'));
 });
 
 test('시작: 위 카메라가 끊겨 있으면 거절, 연결되면 가동', async (t) => {
@@ -102,7 +129,7 @@ test('불량: 로봇팔 작업(자세 → 학습 정책 → 자세)으로 불량
 });
 
 test('집기 실패: 한 번 다시 시도 → 그래도 안 되면 GRIP_FAILED, 원점 복귀를 해야 다시 시작', async (t) => {
-  const tasks = { sort_defect: { retry: { times: 1, from: 0 }, steps: [
+  const tasks = { sort_part: { retry: { times: 1, from: 0 }, steps: [
     { pose: 'above_pick' }, { policy: 'grasp_part', timeout_s: 0.4, until: 'holding' }, { pose: 'above_bin' }, { gripper: 'open' }, { pose: 'wait' },
   ] } };
   const { server, events } = setup(t, { tasks });

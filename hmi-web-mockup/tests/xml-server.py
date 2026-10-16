@@ -16,12 +16,18 @@ v1.0과 같게 하는 것 (서버 담당 회신 docs/hmi-server-reply-1.md, 2026
   - 바이너리 메시지는 닫기 코드 1003, 16KiB 넘는 요청은 1009
   - --simulation: 연결·가동 true, 각도 -45~45도, 2초마다 검사 1개(5번째마다 불량)
 
---extended: v1.0 다음으로 HMI가 요청한 모양(docs/xml-protocol.md 4장)도 낸다 — 라인 상태(Line)·리더암 연결(LeaderArm)·이벤트(Event)·
-  판정(Inspection)·명령 실행(executed="true")·상태에 따른 거절 코드·Stop(ProgramStop의 별칭, 회신의 제안)·CameraStart·CameraStop.
-  완료 이벤트(HomeCompleted · LineStopped)에는 요청 id를 <Param name="requestId">로 싣는다 (회신의 제안)
+--extended: v1.0 다음으로 HMI가 요청한 모양(docs/xml-protocol.md 4장)도 낸다 — 라인 상태(Line, 로봇팔이 옮길 부품 sortTarget 포함)·
+  리더암 연결(LeaderArm)·이벤트(Event)·판정(Inspection)·명령 실행(executed="true")·상태에 따른 거절 코드·Stop(ProgramStop의 별칭,
+  회신의 제안)·CameraStart·CameraStop·SetSortTarget(target Good|Defect, 정지 상태에서만).
+  완료 이벤트(HomeCompleted · LineStopped)에는 요청 id를 <Param name="requestId">로 싣는다 (회신의 제안).
+  v1.0(--extended 없음)은 SetSortTarget target="Good"을 속성 검사에서 InvalidCommand로 거절한다 (실제 서버와 같게)
 
 --static <폴더>: 웹소켓이 아닌 GET에는 그 폴더의 파일로 답한다 ("/" → index.html). 메인 서버가 HMI 화면도 내주는 구성을
   흉내 낸다 — 화면과 웹소켓이 같은 주소라 HMI는 주소 뒤 ?mock=0&ws=auto (메인 서버용 묶음은 그대로)로 붙는다
+
+--video: 브릿지 서버의 카메라 영상(서버 담당 안내 2026-10-17, docs/hmi-video-integration.md)을 흉내 낸다 — 설비가 카메라 1·2의 JPEG를
+  초당 5장 올리는 것으로 보고 GET /video/status(JSON) · /video/1.mjpg · /video/2.mjpg(MJPEG)를 낸다. 영상은 tests/fixtures/video-*.jpg.
+  5초 넘게 새 프레임이 없으면 MJPEG 연결을 닫는다. 끊김 흉내(시험용): GET /video/_sim?link=0|1 (설비 업로드 연결) · ?cam=1|2&on=0|1
 
 실행: python hmi-web-mockup/tests/xml-server.py 5080 --simulation
 그다음 http://localhost:5173/?mock=0&ws=ws://localhost:5080/ws/hmi
@@ -29,6 +35,7 @@ v1.0과 같게 하는 것 (서버 담당 회신 docs/hmi-server-reply-1.md, 2026
 import argparse
 import base64
 import hashlib
+import json
 import math
 import os
 import random
@@ -46,8 +53,11 @@ from xml.sax.saxutils import escape, quoteattr
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MAX_MESSAGE = 16 * 1024
 V10_COMMANDS = {"EmergencyStop", "ProgramStart", "ProgramStop", "Home", "SetMode", "EmergencyStopRelease"}
-EXT_COMMANDS = {"Stop", "CameraStart", "CameraStop"}
+EXT_COMMANDS = {"Stop", "CameraStart", "CameraStop", "SetSortTarget"}
 JOINTS = 6
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+VIDEO_FPS = 5
+VIDEO_FRESH_S = 5  # 서버가 프레임을 "최근 수신"으로 보는 시간 (안내: freshnessMs 5000)
 
 ARGS = None
 lock = threading.Lock()
@@ -55,9 +65,13 @@ clients = set()
 started = time.time()
 # 요청안(--extended)의 라인 상태
 S = {
-    "line": "Stopped", "mode": "Auto", "estop": False, "home_required": False, "started_at": None,
+    "line": "Stopped", "mode": "Auto", "estop": False, "home_required": False, "started_at": None, "sort_target": "Defect",
     "cameras": {"top": False}, "seq": 0, "good": 0, "defect": 0, "part": 0,
 }
+# --video: 설비의 영상 업로드 흉내. received는 마지막 프레임을 받은 때(초), 업로드 연결이 끊기면 지운다 (안내 4장)
+V = {"link": True, "on": {1: True, 2: True}, "seq": {1: None, 2: None}, "received": {1: None, 2: None}, "ts": {1: None, 2: None}, "frame": {1: 0, 2: 0}}
+video_cond = threading.Condition()
+FRAMES = {}
 
 
 def now_iso():
@@ -104,7 +118,7 @@ def status_xml(req_id=None):
         equipment += f'<LeaderArm connected="{str(sim).lower()}" />'
         equipment += "".join(f'<Camera id="{cid}" connected="{str(sim).lower()}" streaming="{str(on).lower()}" />' for cid, on in S["cameras"].items())
         line = "<Line" + attrs(state=S["line"], mode=S["mode"], emergencyStop=str(S["estop"]).lower(),
-                               homeRequired=str(S["home_required"]).lower(), startedAt=S["started_at"]) + " />"
+                               homeRequired=str(S["home_required"]).lower(), startedAt=S["started_at"], sortTarget=S["sort_target"]) + " />"
     good, defect = inspection_counts()
     valid = "true" if sim else "false"
     if not sim:
@@ -277,8 +291,9 @@ def handle_command(client, root, req_id):
     if not name:
         client.send_text(reply_xml(req_id, "Rejected", "InvalidCommand", detail="Command requires a name."))
         return
-    # 속성 검사가 명령 이름 검사보다 먼저다 (서버 담당 회신 2장) — CameraStart camera="top"은 InvalidCommand
-    allowed = {"name"} | ({"mode"} if name == "SetMode" else set()) | ({"camera"} if ARGS.extended and name.startswith("Camera") else set())
+    # 속성 검사가 명령 이름 검사보다 먼저다 (서버 담당 회신 2장) — CameraStart camera="top"·SetSortTarget target="Good"은 v1.0에서 InvalidCommand
+    allowed = ({"name"} | ({"mode"} if name == "SetMode" else set()) | ({"camera"} if ARGS.extended and name.startswith("Camera") else set())
+               | ({"target"} if ARGS.extended and name == "SetSortTarget" else set()))
     if set(cmd.attrib) - allowed:
         client.send_text(reply_xml(req_id, "Rejected", "InvalidCommand", command=name, detail="Unexpected attribute in Command."))
         return
@@ -294,6 +309,9 @@ def handle_command(client, root, req_id):
     mode = cmd.get("mode")
     if name == "SetMode" and mode not in ("Auto", "Manual"):
         client.send_text(reply_xml(req_id, "Rejected", "InvalidMode", command=name, detail="SetMode requires mode Auto or Manual."))
+        return
+    if name == "SetSortTarget" and cmd.get("target") not in ("Good", "Defect"):
+        client.send_text(reply_xml(req_id, "Rejected", "InvalidTarget", command=name, detail="SetSortTarget requires target Good or Defect."))
         return
     angles = None
     if name == "Home" and len(cmd):
@@ -374,6 +392,16 @@ def execute(client, req_id, name, cmd, mode, angles):
                 if cid is None or cid == k:
                     S["cameras"][k] = name == "CameraStart"
             events.append(("CameraStarted" if name == "CameraStart" else "CameraStopped", "Info", {}))
+        elif name == "SetSortTarget":
+            # 로봇팔이 옮길 부품 — 운전 모드처럼 정지 상태에서만 (사용자 2026-10-17)
+            if S["estop"]:
+                return reject("EstopActive", "Release the emergency stop first.")
+            if S["line"] != "Stopped":
+                return reject("NotStopped", "Stop the line first.")
+            target = cmd.get("target")
+            if S["sort_target"] != target:
+                S["sort_target"] = target
+                events.append(("SortTargetChanged", "Info", {"target": target}))
     client.send_text(reply_xml(req_id, "Received", "Accepted", command=name, mode=mode, executed=True, detail="Command accepted."))
     for code, level, params in events:
         broadcast(event_xml(code, level, **params))
@@ -412,6 +440,82 @@ def serve_static(sock, method, path):
     http_reply(sock, "200 OK", CONTENT_TYPES[ext], body)
 
 
+# ---------- --video: 브릿지 서버의 카메라 영상 흉내 (안내 4~6장) ----------
+
+def iso_utc(t):
+    return datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="seconds") if t else None
+
+
+def video_status():
+    """GET /video/status — available은 최근 5초 안에 프레임을 받았는지 (서버가 받은 때 기준)"""
+    now = time.time()
+    with video_cond:
+        cams = [{
+            "id": cid,
+            "available": bool(V["link"] and V["received"][cid] and now - V["received"][cid] < VIDEO_FRESH_S),
+            "receivedAt": iso_utc(V["received"][cid]),
+            "sourceTimestampMs": V["ts"][cid],
+            "sequence": V["seq"][cid],
+        } for cid in (1, 2)]
+        return {"connected": V["link"], "freshnessMs": VIDEO_FRESH_S * 1000, "cameras": cams}
+
+
+def video_feeder():
+    """설비가 카메라 1·2의 JPEG를 초당 VIDEO_FPS장 올리는 흉내. 업로드 연결이 끊기면 받은 때·순번을 지운다"""
+    while True:
+        time.sleep(1 / VIDEO_FPS)
+        with video_cond:
+            for cid in (1, 2):
+                if V["link"] and V["on"][cid]:
+                    V["seq"][cid] = 0 if V["seq"][cid] is None else (V["seq"][cid] + 1) % 65536
+                    V["received"][cid] = time.time()
+                    V["ts"][cid] = int(time.time() * 1000)
+                    V["frame"][cid] = (V["frame"][cid] + 1) % 2
+            video_cond.notify_all()
+
+
+def stream_mjpeg(sock, cid):
+    """GET /video/N.mjpg — 새 프레임이 올 때마다 JPEG 한 장씩. 5초 넘게 새 프레임이 없으면 닫는다 (안내 5장)"""
+    sock.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\n"
+                 b"Cache-Control: no-store, no-cache\r\nConnection: close\r\n\r\n")
+    last = None
+    while True:
+        with video_cond:
+            if not video_cond.wait_for(lambda: V["link"] and V["on"][cid] and V["seq"][cid] is not None and V["seq"][cid] != last, timeout=VIDEO_FRESH_S):
+                return
+            last, ts, jpeg = V["seq"][cid], V["ts"][cid], FRAMES[cid][V["frame"][cid]]
+        head = (f"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {len(jpeg)}\r\n"
+                f"X-Sequence: {last}\r\nX-Timestamp-Ms: {ts}\r\n\r\n").encode()
+        sock.sendall(head + jpeg + b"\r\n")
+
+
+def serve_video(sock, path):
+    url = urllib.parse.urlsplit(path)
+    if url.path == "/video/status":
+        http_reply(sock, "200 OK", "application/json; charset=utf-8", json.dumps(video_status()).encode())
+    elif url.path in ("/video/1.mjpg", "/video/2.mjpg"):
+        try:
+            stream_mjpeg(sock, int(url.path[7]))
+        except OSError:
+            pass  # 화면이 연결을 닫음
+    elif url.path == "/video/_sim":
+        # 시험용 끊김 흉내: ?link=0|1 (설비 업로드 연결) · ?cam=1|2&on=0|1 (카메라 하나만 멈춤)
+        q = dict(urllib.parse.parse_qsl(url.query))
+        with video_cond:
+            if q.get("link") in ("0", "1"):
+                V["link"] = q["link"] == "1"
+                if not V["link"]:  # 업로드 연결이 끊기면 받은 때·순번은 null (안내 4장)
+                    for cid in (1, 2):
+                        V["received"][cid] = V["seq"][cid] = V["ts"][cid] = None
+            if q.get("cam") in ("1", "2") and q.get("on") in ("0", "1"):
+                V["on"][int(q["cam"])] = q["on"] == "1"
+            video_cond.notify_all()
+        print(f"[video] link={V['link']} cameras={V['on']}", flush=True)
+        http_reply(sock, "200 OK", "application/json; charset=utf-8", json.dumps(video_status()).encode())
+    else:
+        http_reply(sock, "404 Not Found", "text/plain", b"Not found\n")
+
+
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         sock = self.request
@@ -429,6 +533,9 @@ class Handler(socketserver.BaseRequestHandler):
         path = parts[1] if len(parts) > 1 else ""
         headers = {k.strip().lower(): v.strip() for k, v in (ln.split(":", 1) for ln in lines[1:] if ":" in ln)}
         if path.split("?")[0] != "/ws/hmi" or headers.get("upgrade", "").lower() != "websocket":
+            if ARGS.video and parts[0] == "GET" and path.startswith("/video/"):
+                serve_video(sock, path)
+                return
             if ARGS.static and parts[0] in ("GET", "HEAD"):
                 serve_static(sock, parts[0], path)
                 return
@@ -519,11 +626,17 @@ def main():
     p.add_argument("--extended", action="store_true", help="v1.0 다음 요청안(docs/xml-protocol.md 4장)도 흉내")
     p.add_argument("--interval-ms", type=int, default=1000, help="상태 전송 간격 (100~60000)")
     p.add_argument("--static", help="웹소켓이 아닌 GET에 이 폴더의 파일로 답함 (메인 서버가 HMI 화면도 내주는 구성 흉내)")
+    p.add_argument("--video", action="store_true", help="브릿지 서버의 카메라 영상 흉내 (/video/status · /video/1.mjpg · /video/2.mjpg)")
     ARGS = p.parse_args()
     ARGS.interval_ms = max(100, min(60000, ARGS.interval_ms))
     threading.Thread(target=ticker, daemon=True).start()
+    if ARGS.video:
+        for cid in (1, 2):
+            FRAMES[cid] = [open(os.path.join(FIXTURES, f"video-{cid}{k}.jpg"), "rb").read() for k in "ab"]
+        threading.Thread(target=video_feeder, daemon=True).start()
     with Server((ARGS.host, ARGS.port), Handler) as srv:
-        mode = ("simulation" if ARGS.simulation else "unavailable") + (" + extended" if ARGS.extended else "") + (" + static" if ARGS.static else "")
+        mode = (("simulation" if ARGS.simulation else "unavailable") + (" + extended" if ARGS.extended else "")
+                + (" + static" if ARGS.static else "") + (" + video" if ARGS.video else ""))
         print(f"xml-server ws://{ARGS.host}:{srv.server_address[1]}/ws/hmi ({mode})", flush=True)  # 포트 0이면 빈 포트
         try:
             srv.serve_forever()

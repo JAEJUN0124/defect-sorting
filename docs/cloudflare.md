@@ -13,7 +13,9 @@ Cloudflare Access — 허락한 이메일만 (일회용 코드 로그인)
   ▼
 Cloudflare Worker  defect-hmi  (hmi-web-mockup/cloudflare/)
   ├─ /, /assets/…, /tools/…  → 화면 파일 (site/ — 메인 서버 묶음의 wwwroot/와 같음)
-  └─ /ws/hmi (웹소켓만)       → https://hmi-origin.hypefree.net/ws/hmi  (서비스 토큰을 붙임)
+  ├─ /ws/hmi (웹소켓만)       → https://hmi-origin.hypefree.net/ws/hmi  (서비스 토큰을 붙임)
+  └─ /video/status, /video/1.mjpg, /video/2.mjpg (GET·HEAD만)
+                              → https://hmi-origin.hypefree.net/video/…  (서비스 토큰을 붙임, 2026-10-17)
         ▼
 Cloudflare Access — 서비스 토큰만 (없으면 401)
         ▼
@@ -25,7 +27,8 @@ cloudflared (장비망 안 PC, 밖으로 나가는 연결만 씀)
 ```
 
 - 빌드한 화면은 자기를 내준 주소의 `/ws/hmi`에 붙습니다 (`react/src/server-defaults.js`). 그래서 `wss://hmi.hypefree.net/ws/hmi`로 붙고, 연결 코드는 바꾸지 않았습니다.
-- Worker(`worker.js`)는 `/ws/hmi` 웹소켓만 터널로 넘기고, 서버의 다른 경로는 넘기지 않습니다. 사람의 Access 쿠키는 서버로 보내지 않습니다.
+- Worker(`worker.js`)는 `/ws/hmi` 웹소켓과 카메라 영상 세 경로(서버 담당 안내 [hmi-video-integration.md](hmi-video-integration.md))만 터널로 넘기고, 서버의 다른 경로(`/`, 영상 확인 화면 `/video` 등)는 넘기지 않습니다. 사람의 Access 쿠키는 서버로 보내지 않습니다.
+- 영상도 같은 주소(`https://hmi.hypefree.net/video/…`)로 받으므로, 서버에 CORS가 없어도 브라우저가 상태 JSON을 막지 않습니다 (안내 8장). Worker는 서버의 답을 그대로 돌려주어 MJPEG를 쌓아 두지 않고 흘려 보냅니다.
 - 넘기는 방식: Worker가 서버 쪽 웹소켓을 열고 브라우저 쪽 웹소켓을 따로 받아, 둘 사이에서 메시지와 닫힘을 옮깁니다. 서버의 답(101)을 브라우저에 그대로 돌려주는 방식은 이 PC(`wrangler dev`)에서는 됐지만 Cloudflare에서는 브라우저 쪽이 열리지 않아 버렸습니다 (2026-10-17).
 - Worker가 서비스 토큰을 들고 있으므로 화면 주소 앞의 Access 앱이 꼭 있어야 합니다. 같은 이유로 `*.workers.dev`·미리 보기 주소는 열지 않습니다 (`wrangler.jsonc`의 `workers_dev`·`preview_urls`).
 - 서버 담당 README도 외부 연결은 VPN이나 인증·TLS를 갖춘 프록시로 제한하라고 합니다 ([server-xml-v1.0.md](server-xml-v1.0.md)). Access와 Cloudflare의 TLS가 그 역할입니다.
@@ -92,6 +95,7 @@ npm --prefix hmi-web-mockup/cloudflare run dev
 ## 확인
 
 - 장비망 밖(휴대폰 데이터 등)에서 `https://hmi.hypefree.net/` → 이메일 → 받은 코드 → 조작 화면. 서버 연결 표시가 초록이고 상태가 "상태 미수신"이면 됩니다 (서버 v1.0은 `Line`을 보내지 않음).
+- 카메라 연결 → 설비가 영상을 보내는 중이면 탑뷰 영상, 아니면 "설비 영상 연결 대기". "영상 상태 확인 불가"면 아래 표에서 `/video/status`의 답 코드를 봅니다.
 - `https://hmi-origin.hypefree.net/`은 401이어야 합니다 (서비스 토큰 없이는 못 들어감).
 
 ## 안 될 때
@@ -106,13 +110,16 @@ npm --prefix hmi-web-mockup/cloudflare run dev
 | `/ws/hmi`가 401 | 터널 주소의 Access가 토큰을 거절 — 값이 틀림(글자 그대로·터널 토큰·다른 토큰) → `set-token.py`, 또는 `hmi-origin` 정책이 Service Auth · `defect-hmi-worker`가 아님 |
 | `/ws/hmi`가 502 | 토큰은 통과, 터널 너머 서버가 답하지 않음 — 서버가 꺼짐·주소가 바뀜. cloudflared를 돌리는 PC에서 `Test-NetConnection 10.108.108.98 -Port 5080` |
 | 서버가 웹소켓을 400으로 거절 | 터널 route의 Additional application settings → HTTP Settings → HTTP Host Header를 `10.108.108.98:5080`으로 |
+| 카메라가 "영상 상태 확인 불가" | `/video/status`의 답 코드 — 401·500·502는 `/ws/hmi`와 같은 원인, 404는 서버가 영상 경로를 내주지 않음(영상 기능이 없는 서버 판), 405는 GET·HEAD가 아닌 요청 |
 | Worker 배포가 사용자 지정 도메인에서 실패 | `hmi.hypefree.net`에 이미 DNS 레코드(CNAME)가 있음 → 지우고 다시 배포 |
 | 로그인 화면이 다시 뜸 | Access 세션(24시간)이 끝남 → 새로 고침해서 다시 로그인 |
 
 ## 제한
 
-- cloudflared를 돌리는 PC가 꺼지면 화면은 뜨지만 서버 끊김으로 나옵니다. 인터넷이 끊기면 밖에서 열 수 없습니다 — 장비망 안에서는 지금처럼 `ws://10.108.108.98:5080/ws/hmi`로 바로 붙습니다 (`tools/dev-server.py`, `?mock=0&ws=…`).
+- cloudflared를 돌리는 PC가 꺼지면 화면은 뜨지만 서버 끊김으로 나옵니다. 인터넷이 끊기면 밖에서 열 수 없습니다 — 장비망 안에서는 HMI 담당 PC의 개발용 서버로 엽니다 (`tools/dev-server.py 8080 --host 0.0.0.0 --server http://10.108.108.98:5080`, 주소 `?mock=0&ws=auto` — 카메라까지 같은 주소로 이어짐. [HMI README](../hmi-web-mockup/README.md#실행)).
 - 화면 긴급정지가 인터넷을 한 번 더 거칩니다. 화면 긴급정지는 원래도 서버를 거쳐 믿을 수 없는 것으로 두고, 서버가 끊기면 DC 전원 분리를 안내합니다.
 - 원점은 브라우저 저장소에 주소별로 저장되어, `https://hmi.hypefree.net`에서 잡은 원점은 다른 주소(8080 등)로 연 HMI와 따로입니다 (D-014).
-- 카메라 영상처럼 웹소켓이 아닌 경로를 서버에서 받게 되면 Worker가 그 경로도 넘기게 고쳐야 합니다 (지금은 `/ws/hmi`만).
+- 서버가 다른 HTTP 경로를 더 내주게 되면 Worker가 그 경로도 넘기게 고쳐야 합니다 (`worker.js`의 `VIDEO_PATHS`처럼. 지금은 `/ws/hmi`와 영상 세 경로).
+- 카메라를 켠 화면은 1초마다 `/video/status`를 물어, 그때마다 Worker 요청이 하나씩 듭니다 (화면 파일은 Worker를 거치지 않음). 무료 플랜은 하루 요청 수에 한도(Cloudflare 문서 기준 10만 번)가 있어, 화면 하나가 8시간 켜 두면 약 2만 9천 번입니다. 그래서 카메라를 켠 동안만, 탭이 보일 때만 묻습니다.
+- MJPEG가 Worker·Tunnel을 거쳐 끊김 없이 흐르는지와 지연은 실제 영상으로 확인하지 않았습니다 (Worker 중계는 시험으로만 확인).
 - 서비스 토큰은 1년으로 만들었습니다. 끝나기 전에 Refresh(기한 연장)하거나, 새로 만들어 `set-token.py`로 다시 넣습니다.

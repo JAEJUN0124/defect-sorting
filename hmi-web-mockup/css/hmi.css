@@ -204,6 +204,34 @@
 }
 .camera :focus-visible { outline-color: #FFFFFF; }
 
+/* 탑뷰/그리퍼 바꾸기: 화면 왼쪽 위. "카메라 끄기"(오른쪽 위)와 같은 모양, 고른 쪽은 운전 모드처럼 2px 테두리.
+   영상을 보는 동안은 카메라마다 점(초록 = 영상이 옴)이 붙는다 */
+.camera__switch {
+  position: absolute;
+  top: var(--s-3);
+  left: var(--s-3);
+  z-index: 1;
+  display: flex;
+  gap: var(--s-2);
+}
+.camera__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  background: var(--c-screen);
+  border: 1px solid var(--c-ink-3);
+  border-radius: var(--r-key);
+  color: var(--c-on-screen);
+  font-size: var(--fs-s);
+  font-weight: 600;
+  cursor: pointer;
+}
+.camera__pick[aria-pressed="true"] { border: 2px solid #FFFFFF; color: #FFFFFF; }
+.camera__pick:disabled { cursor: default; color: var(--c-ink-3); }
+.camera__off { z-index: 1; }
+
 /* ---------- 생산 통계 ---------- */
 
 .stats__list {

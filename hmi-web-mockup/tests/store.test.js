@@ -10,8 +10,8 @@ const JOINTS = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wr
 const tick = () => new Promise((r) => setTimeout(r, 10));
 
 // store.js를 새로 불러온다. 가짜 서버 연결이 받은 handlers(onOpen·onClose·onMessage)로 메시지를 넣는다
-function freshStore(api, xml) {
-  window.HMI_CONFIG = { useMock: false, server: { xml: Object.assign({}, xml) }, cameras: {}, heartbeatTimeoutMs: 0 };
+function freshStore(api, xml, cfgExtra) {
+  window.HMI_CONFIG = Object.assign({ useMock: false, server: { xml: Object.assign({}, xml) }, cameras: {}, heartbeatTimeoutMs: 0 }, cfgExtra);
   window.HMI_ROBOT = {};
   window.I18N = { t: (k) => k };
   window.HmiHome = { JOINTS, read: () => null, save: (pose) => Object.assign({ setAt: new Date().toISOString() }, pose), subscribe: () => () => {}, persisted: () => true };
@@ -164,4 +164,57 @@ test('store.js: stop()은 서버 연결을 닫는다 (프로그램 종료 — �
   store.start();
   store.stop();
   assert.equal(closed, 1);
+});
+
+test('store.js: 브릿지 영상 — 카메라 켜기·끄기는 서버 명령 없이 이 HMI에서, 탑뷰/그리퍼 바꾸기, 상태 조회(/video/status)로 카메라마다 단계', async (t) => {
+  require(path.join(__dirname, '..', 'js', 'video.js'));
+  const realFetch = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    asked.push(url);
+    return { ok: true, json: async () => ({ connected: true, cameras: [{ id: 2, available: false, receivedAt: null }, { id: 1, available: true, receivedAt: '2026-10-17T06:00:00+00:00' }] }) };
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
+  let cameraCommands = 0;
+  const bridge = { statusPath: '/video/status', pollMs: 20, timeoutMs: 500, streams: { top: { id: 1, path: '/video/1.mjpg' }, close: { id: 2, path: '/video/2.mjpg' } } };
+  const store = freshStore({ connect() {}, startCamera: async () => { cameraCommands += 1; } }, {}, { wsUrl: 'wss://hmi.example.net/ws/hmi', cameras: { bridge } });
+  assert.equal(store.videoBridge(), true);
+  assert.deepEqual(store.cameraIds(), ['top', 'close']);
+  assert.equal(store.primaryCamera(), 'top');
+  assert.equal(store.cameraSource('top').streaming, false);
+  assert.equal(store.videoPhase('top'), null); // 꺼져 있으면 모른다
+  await store.startCamera();
+  assert.equal(cameraCommands, 0); // 서버 명령을 보내지 않는다 (서버에 카메라 명령이 없다)
+  const src = store.cameraSource('top');
+  assert.deepEqual([src.streaming, src.transport, src.url, src.videoId], [true, 'bridge', 'https://hmi.example.net/video/1.mjpg', 1]);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(asked[0], 'https://hmi.example.net/video/status');
+  assert.equal(store.videoPhase('top'), 'live');
+  assert.equal(store.videoPhase('close'), 'none');
+  store.selectCamera('close');
+  assert.equal(store.primaryCamera(), 'close');
+  await store.stopCamera();
+  assert.equal(store.videoPhase('close'), null);
+  const n = asked.length;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(asked.length, n); // 끄면 더 묻지 않는다
+});
+
+test('store.js: 로봇팔이 옮길 부품 — 서버가 알려 주면 그 값, 아니면 서버가 받은 마지막 값(이 HMI), 거절되면 기억하지 않음', async () => {
+  let handlers = null;
+  let reply = async () => ({ reply: { executed: true } });
+  const store = freshStore({ connect(h) { handlers = h; }, getInfo: async () => null, getStatus: async () => ({}), getHistory: async () => null, setSortTarget: (v) => reply(v) });
+  store.start();
+  handlers.onOpen();
+  await tick();
+  assert.deepEqual(store.sortTarget(), { value: null, from: null });
+  await store.setSortTarget('good');
+  assert.deepEqual(store.sortTarget(), { value: 'good', from: 'local' });
+  reply = async () => { const e = new Error('x'); e.code = 'XML_INVALID_COMMAND'; e.details = { command: 'SetSortTarget' }; throw e; };
+  await assert.rejects(store.setSortTarget('defect'));
+  assert.equal(store.sortTarget().value, 'good');
+  handlers.onMessage({ type: 'status', data: { sortTarget: 'defect' } });
+  assert.deepEqual(store.sortTarget(), { value: 'defect', from: 'server' });
+  assert.equal(store.errorText({ code: 'XML_INVALID_COMMAND', details: { command: 'SetSortTarget' } }), 'error.sortTarget.unsupported');
+  assert.equal(store.errorText({ code: 'XML_UNKNOWN_COMMAND', details: { command: 'SetSortTarget' } }), 'error.sortTarget.unsupported');
 });

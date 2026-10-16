@@ -5,6 +5,7 @@
 //   webrtc   WHEP 방식(SDP를 POST)으로 받는다 (MediaMTX·go2rtc·aiortc 등). 지연이 가장 짧다
 //   video    <video>로 연다 (MP4·WebM 스트림, HLS는 브라우저가 직접 재생할 때만)
 //   local    이 PC에 꽂힌 USB 카메라를 직접 연다. config.js cameras.local.upload가 있으면 서버로 올려 보낸다
+//   bridge   브릿지 서버의 MJPEG (js/video.js, 서버 담당 안내 2026-10-17). 상태 조회(/video/status)가 영상이 있다고 할 때만 연다
 //   mock     가짜 서버의 카메라. 영상이 없다고 알린다 (가짜 영상은 실제 카메라를 쓰면서 뺐다, 사용자 2026-10-17)
 // 서버가 판정 상자 좌표(bbox)를 보내면 영상 위에 겹쳐 그립니다.
 (function () {
@@ -87,14 +88,21 @@
         webrtc: this.startWebrtc,
         video: this.startVideo,
         local: this.startLocal,
+        bridge: this.startBridge,
       };
       (starts[want.transport] || this.startMjpeg).call(this, want, cur);
     }
 
+    // detail: 영상 자리 왼쪽 아래에 쓸 이유. 브릿지 영상은 'bridge.waiting'처럼 단계 이름 (문구 camera.bridge.*)
     setState(next, detail) {
-      if (this.state === next && !detail) return;
+      if (this.state === next && this.detail === detail) return;
       this.state = next;
-      const text = next === 'loading' ? t('camera.waiting') : next === 'error' ? t(detail === 'no-url' ? 'camera.noUrl' : detail === 'local' ? 'camera.localFailed' : detail === 'mock' ? 'camera.noMock' : 'camera.failed') : '';
+      this.detail = detail;
+      let key = '';
+      if (detail && /^bridge\./.test(detail)) key = 'camera.' + detail;
+      else if (next === 'loading') key = 'camera.waiting';
+      else if (next === 'error') key = { 'no-url': 'camera.noUrl', local: 'camera.localFailed', mock: 'camera.noMock' }[detail] || 'camera.failed';
+      const text = key ? t(key) : '';
       this.status.textContent = text;
       this.status.hidden = !text;
       this.onState(next, detail);
@@ -158,6 +166,42 @@
       };
       img.src = url;
       cur.cleanup.push(() => { clearInterval(watch); clearTimeout(retry); img.onerror = null; img.removeAttribute('src'); });
+    }
+
+    // 브릿지 서버 영상 (js/video.js · 안내 4~5장): 상태 조회가 "영상 있음"(live)일 때만 MJPEG를 열고, 그 밖에는 영상을 숨기고 이유를 쓴다
+    // (마지막 장면이 정상 영상처럼 남지 않게). 정상 스트림은 그대로 두고 끊겼을 때만 다시 연다 — 다시 열기는 1초부터 2배씩 최대 5초 간격.
+    // 응답이 200이어도 JPEG가 아직 없을 수 있어, 첫 장면이 그려져야(naturalWidth) 영상으로 본다
+    startBridge(src, cur) {
+      const img = this.mount(cur, 'img');
+      img.hidden = true;
+      let open = false;
+      let failures = 0;
+      let retryAt = 0;
+      const close = () => { open = false; img.hidden = true; img.removeAttribute('src'); };
+      const show = (phase) => {
+        if (this.current !== cur) return;
+        if (phase !== 'live') { close(); this.setState(phase === 'checking' ? 'loading' : 'error', 'bridge.' + phase); return; }
+        if (open) return;
+        if (Date.now() < retryAt) { this.setState('error', 'bridge.retry'); return; }
+        open = true;
+        img.src = bust(src.url, 't');
+        this.setState('loading', 'bridge.opening');
+      };
+      const watch = setInterval(() => {
+        if (open && img.naturalWidth > 0 && this.state !== 'live') { failures = 0; img.hidden = false; this.setState('live'); }
+      }, 300);
+      // 연결이 끊기거나 JPEG를 그리지 못함 (상태가 "영상 있음"이어도 표시 오류로 본다)
+      img.onerror = () => {
+        if (this.current !== cur || !open) return;
+        close();
+        failures += 1;
+        retryAt = Date.now() + Math.min(5000, 1000 * 2 ** (failures - 1));
+        this.setState('error', 'bridge.retry');
+      };
+      const classify = (st) => window.HmiVideo.classify(st.status, src.videoId, st.error);
+      const off = src.poller.subscribe((st) => show(classify(st)));
+      show(classify(src.poller.state));
+      cur.cleanup.push(() => { off(); clearInterval(watch); img.onerror = null; close(); });
     }
 
     startSnapshot(src, cur) {

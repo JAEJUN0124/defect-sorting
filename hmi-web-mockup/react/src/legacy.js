@@ -14,6 +14,7 @@ import '../../js/conveyor.js';
 import '../../js/mock-server.js';
 import '../../js/mock-hub.js';
 import '../../js/api.js';
+import '../../js/video.js'; // 브릿지 서버 영상 주소·상태 조회 (store.js · camera.js가 씀)
 import '../../js/home.js';
 import '../../js/store.js';
 import '../../js/camera.js';

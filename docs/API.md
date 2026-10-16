@@ -1,4 +1,4 @@
-# HMI ↔ 서버 API 초안 (v0.5)
+# HMI ↔ 서버 API 초안 (v0.6)
 
 > **통신 방식이 정해졌습니다 (D-002): 웹소켓 하나 + XML.** 서버 담당의 규약 v1.0은 [server-xml-v1.0.md](server-xml-v1.0.md),
 > HMI가 그것을 어떻게 쓰고 v1.0 다음에 무엇을 요청하는지는 [xml-protocol.md](xml-protocol.md)에 있습니다.
@@ -14,9 +14,10 @@ HMI(웹)의 가짜 서버(`hmi-web-mockup/js/mock-server.js`)가 이 문서대�
 서버가 장치와 주고받는 약속은 따로 있습니다: [컨베이어 시리얼 규약](conveyor-protocol.md) · [로봇팔 제어 약속](arm-control.md) · [공정 순서](line-sequence.md).
 이 문서는 그 결과 중 HMI가 보는 것(상태·고장·이벤트)만 다룹니다.
 
-달라진 점은 [10장](#10-v01--v02-바뀐-점)(v0.1 → v0.2), [11장](#11-v02--v03-바뀐-점)(v0.2 → v0.3), [12장](#12-v03--v04-바뀐-점)(v0.3 → v0.4), [13장](#13-v04--v05-바뀐-점)(v0.4 → v0.5)에 모았습니다.
+달라진 점은 [10장](#10-v01--v02-바뀐-점)(v0.1 → v0.2), [11장](#11-v02--v03-바뀐-점)(v0.2 → v0.3), [12장](#12-v03--v04-바뀐-점)(v0.3 → v0.4), [13장](#13-v04--v05-바뀐-점)(v0.4 → v0.5), [14장](#14-v05--v06-바뀐-점)(v0.5 → v0.6)에 모았습니다.
 v0.2·v0.3은 더하기만 했습니다. v0.4는 원점(F-04)의 뜻이 바뀌었습니다: 수동 모드의 "원점 잡기"가 로봇팔의 지금 자세를 원점으로 저장하고, 자동 모드의 "원점 복귀"가 그 원점으로 옮깁니다.
 **v0.5는 원점을 저장하는 곳이 바뀌었습니다**: 서버가 아니라 HMI(브라우저)가 저장하고, 원점 복귀 명령이 그 각도를 가져갑니다 (4.2장).
+v0.6은 로봇팔이 상자에 옮길 부품(양품·불량품)을 HMI에서 고르는 명령 `PUT /api/sort-target`과 상태 `sort_target`을 더했습니다 (4.3장).
 
 ## 1. 기본 규칙
 
@@ -37,7 +38,7 @@ v0.2·v0.3은 더하기만 했습니다. v0.4는 원점(F-04)의 뜻이 바뀌�
 
 ```json
 {
-  "api": "0.5",
+  "api": "0.6",
   "server": { "name": "defect-sorting-server", "version": "0.1.0" },
   "joint_unit": "deg",
   "cameras": [
@@ -48,7 +49,7 @@ v0.2·v0.3은 더하기만 했습니다. v0.4는 원점(F-04)의 뜻이 바뀌�
     "arm":    { "role": "follower", "calibration": { "shoulder_pan": { "min": 1012, "max": 3086 } } },
     "leader": { "role": "leader" }
   },
-  "features": ["telemetry", "metrics", "inspection_bbox", "multi_camera", "history", "cycle", "home"]
+  "features": ["telemetry", "metrics", "inspection_bbox", "multi_camera", "history", "cycle", "home", "sort_target"]
 }
 ```
 
@@ -71,6 +72,7 @@ v0.2·v0.3은 더하기만 했습니다. v0.4는 원점(F-04)의 뜻이 바뀌�
   "fault": null,
   "started_at": "2026-10-12T14:02:11+09:00",
   "home_required": false,
+  "sort_target": "defect",
   "cycle": { "stage": "inspecting", "part": 128, "step": null },
   "devices": {
     "conveyor": "connected", "arm": "connected", "leader": "connected",
@@ -92,7 +94,8 @@ v0.2·v0.3은 더하기만 했습니다. v0.4는 원점(F-04)의 뜻이 바뀌�
 | `fault` | `null` 또는 `{ "code": "SERVO_OVERHEAT", "params": { "arm": "arm", "joint": "elbow_flex", "temp": 65.2 }, "clear": "auto" }` | (v0.2) 고장으로 멈췄을 때 이유. 정지 상태 설명과 시작 거절 문구에 쓰입니다. `clear`(v0.3)는 풀리는 방법 (3.1장) |
 | `started_at` | 시각 또는 `null` | (v0.2) 이번 가동을 시작한 때 (가동 시간을 보이던 대시보드는 2026-10-17에 없앰) |
 | `home_required` | `true` / `false` | (v0.3) 원점 복귀를 해야 **자동으로** 시작할 수 있음. 긴급정지·로봇팔 고장 뒤 `true`, 원점 복귀를 마치면 `false`. 그동안 자동 시작은 `409 HOME_REQUIRED` (v0.4: 수동 시작은 막지 않음). v0.4에 있던 저장된 원점 `home` 필드는 v0.5에서 뺐습니다 — 원점은 HMI가 저장합니다 (4.2장) |
-| `cycle` | `null` 또는 `{ "stage", "part", "step" }` | (v0.3) 가동 중 부품 하나를 처리하는 단계. `stage`: `feeding`(옮기는 중) · `inspecting`(멈춰서 판정) · `sorting`(로봇팔이 불량품을 옮김) · `passing`(양품을 내보냄). `part`는 그 부품의 판정 번호, `step`은 로봇팔 작업의 지금 단계 이름(선택). [공정 순서](line-sequence.md) |
+| `sort_target` | `good` / `defect` | (v0.6) 로봇팔이 상자에 옮길 부품. 이 판정의 부품은 로봇팔이 옮기고, 다른 쪽은 컨베이어로 내보냅니다. 바꾸는 것은 `PUT /api/sort-target` (4.3장). 보내지 않으면 HMI는 이 브라우저에서 마지막으로 서버가 받은 값을 보입니다 |
+| `cycle` | `null` 또는 `{ "stage", "part", "step" }` | (v0.3) 가동 중 부품 하나를 처리하는 단계. `stage`: `feeding`(옮기는 중) · `inspecting`(멈춰서 판정) · `sorting`(로봇팔이 `sort_target` 부품을 상자에 옮김 — v0.5까지는 늘 불량품) · `passing`(다른 쪽을 내보냄). `part`는 그 부품의 판정 번호, `step`은 로봇팔 작업의 지금 단계 이름(선택). [공정 순서](line-sequence.md) |
 | `devices.*` | `connected` / `disconnected` | 컨베이어(아두이노), 로봇팔(팔로워), 리더암, 카메라마다 `camera_<id>` |
 | `stats` | 정수 | 이번 실행에서 검사한 수 / 양품 / 불량 |
 | `cameras.<id>` | `{ streaming, url, transport }` | (v0.2) 카메라마다. v0.1의 `camera: { streaming, url }`(한 대)도 그대로 받습니다 |
@@ -134,6 +137,7 @@ v0.2·v0.3은 더하기만 했습니다. v0.4는 원점(F-04)의 뜻이 바뀌�
 | F-05 카메라 끄기 | `POST /api/camera/stop` | 없음 또는 `{ "camera": "top" }` | `200` | — |
 | F-05 영상 | `GET /api/camera/<id>/stream` | — | [7장](#7-카메라-영상-방식)의 방식 중 하나 (MJPEG 권장) | — |
 | F-06 모드 전환 | `PUT /api/mode` | `{ "mode": "auto" }` | `200` 상태 | `409 NOT_STOPPED` `409 ESTOP_ACTIVE` `422 INVALID_MODE` |
+| 로봇팔이 옮길 부품 (추가 2026-10-17) | `PUT /api/sort-target` | `{ "target": "good" }` (`good` · `defect`) | `200` 상태 (v0.6) | `409 NOT_STOPPED` `409 ESTOP_ACTIVE` `422 INVALID_SORT_TARGET` |
 | 상태 | `GET /api/status` | — | `200` 상태 | — |
 | 서버 정보 | `GET /api/info` | — | `200` 서버 정보 (없으면 404) | — |
 | 기록 | `GET /api/history?after=…&events=…&inspections=…&minutes=…` | — | `200` 기록 (없으면 404) — [5.2장](#52-순번seq과-기록-조회--get-apihistory-v03-권장) | — |
@@ -198,6 +202,18 @@ XML 규약에서의 모양은 [xml-protocol.md 3장](xml-protocol.md#3-원점--h
 | 5 | `wrist_roll` | 손목 회전 |
 | 6 | `gripper` | 그리퍼 |
 
+### 4.3 로봇팔이 옮길 부품 (v0.6)
+HMI에서 로봇팔이 상자에 옮길 부품을 **양품·불량품 중에서 고릅니다** (사용자 2026-10-17). 고른 쪽으로 판정된 부품을 로봇팔이 옮기고(`cycle.stage: sorting`, 작업 `sort_part`), 다른 쪽은 컨베이어로 내보냅니다(`passing`).
+XML 규약에서의 모양(요청안)은 [xml-protocol.md 4.2](xml-protocol.md#42-명령에-더할-것-우선순위-2)의 `SetSortTarget`입니다.
+
+| 항목 | 내용 |
+|---|---|
+| 바꾸는 때 | **정지 상태에서만** — 운전 모드와 같은 규칙 (사용자 2026-10-17). 가동 중이면 `409 NOT_STOPPED`, 긴급정지 중이면 `409 ESTOP_ACTIVE`. HMI도 가동 중에는 키를 잠금 |
+| 값 | `good`(양품) · `defect`(불량품). 그 밖이면 `422 INVALID_SORT_TARGET` |
+| 받으면 | 상태 `sort_target`을 바꾸고 이벤트 `sort_target_changed` (`target`). 같은 값이면 그대로 `200` (이벤트 없음) |
+| 처음 값 | 가짜 서버는 `defect` (v0.5까지처럼 불량품을 옮김). 실제 서버는 서버 담당과 정함 (HMI 제안: 마지막 값, 없으면 `defect`) |
+| 화면 | 조작반의 "로봇팔이 옮길 부품" 키 둘. 서버가 알려 준 값이 눌린 모양. 서버가 값을 보내지 않으면 이 브라우저에서 마지막으로 서버가 받은 값(`hmi.sortTarget`)을 보이고 그렇다고 씀. 자동 가동 중 상태 설명은 "카메라 판정에 따라 로봇팔이 양품을 골라냅니다"처럼 고른 쪽으로 |
+
 ## 5. 실시간 메시지 (서버 → HMI)
 
 모든 메시지는 `{ "type": "...", "data": { ... } }` 모양입니다.
@@ -238,6 +254,7 @@ XML 규약에서의 모양은 [xml-protocol.md 3장](xml-protocol.md#3-원점--h
 | `home_started` / `home_completed` | info | — (원점 복귀) |
 | `home_set` | info | — 원점 잡기로 지금 자세를 원점으로 저장함 (v0.5: 서버가 아니라 HMI가 로그에 남김) |
 | `mode_changed` | info | `mode` |
+| `sort_target_changed` | info | `target` (`good` · `defect`) — v0.6. 로봇팔이 옮길 부품을 바꿈 |
 | `defect_detected` | warning | `id` |
 | `device_disconnected` | warning | `device` |
 | `device_reconnected` | info | `device` |
@@ -313,7 +330,7 @@ HMI가 하는 일
 | HMI 살아 있음 | `config.js server.clientPingMs > 0`일 때 | `{ "type": "ping", "data": { "at": "..." } }` — 서버가 HMI가 끊겼을 때 라인을 세우려면 이것을 보고 판단 |
 | 카메라 영상 | 카메라가 HMI PC에 꽂혀 있고 `cameras.local.upload`를 정했을 때 | 웹소켓 바이너리, 장면마다 JPEG 한 장 |
 
-명령 이름: `info` `status` `history` `start` `stop` `estop` `release` `home`(원점 복귀) `mode` `cameraStart` `cameraStop` (`config.js server.commandNames`로 바꿀 수 있음). 원점 잡기는 v0.5부터, 프로그램 종료는 2026-10-16부터 HMI 안에서 끝나 서버 명령이 없습니다.
+명령 이름: `info` `status` `history` `start` `stop` `estop` `release` `home`(원점 복귀) `mode` `sortTarget`(v0.6) `cameraStart` `cameraStop` (`config.js server.commandNames`로 바꿀 수 있음). 원점 잡기는 v0.5부터, 프로그램 종료는 2026-10-16부터 HMI 안에서 끝나 서버 명령이 없습니다.
 명령을 실시간 연결로 보낼 때 `history`의 값(`after` 등)은 `body`에 담습니다.
 
 ## 7. 카메라 영상 방식
@@ -331,6 +348,8 @@ HMI가 하는 일
 
 서버가 판정 상자를 영상에 직접 그려 보내면 `config.js cameras.overlay`를 `false`로 두세요(두 번 그려지지 않게).
 
+실제 서버(XML)의 영상은 서버 담당 안내(2026-10-17, [hmi-video-integration.md](hmi-video-integration.md))대로 정해졌습니다: 같은 서버가 HTTP로 `/video/1.mjpg`(탑뷰)·`/video/2.mjpg`(그리퍼) MJPEG와 상태 JSON `/video/status`를 내주고, 카메라 명령은 없습니다. HMI 쪽 처리는 [xml-protocol.md 8장](xml-protocol.md#8-카메라-영상--서버의-http-주소에서-따로-받음-서버-안내-2026-10-17)입니다 (`config.js cameras.bridge`).
+
 ## 8. 안전 메모
 
 화면의 긴급정지는 네트워크와 서버를 거칩니다. 서버가 멈추면 화면 버튼은 효과가 없습니다.
@@ -345,7 +364,8 @@ HMI가 하는 일
 ## 9. 서버 담당과 정할 것
 
 - [ ] 실시간 방식 (WebSocket 권장 / Socket.IO / SSE)과 명령 방식 (HTTP 권장)
-- [ ] 카메라 id·이름과 영상 방식 (MJPEG 권장), 주 카메라
+- [x] 카메라 id·이름과 영상 방식 (MJPEG 권장), 주 카메라 → 서버 안내(2026-10-17): MJPEG, 1 = 탑뷰(`top`) · 2 = 그리퍼(`close`), 화면 하나에 바꿔 봄 ([xml-protocol.md 8장](xml-protocol.md#8-카메라-영상--서버의-http-주소에서-따로-받음-서버-안내-2026-10-17))
+- [ ] (v0.6) 로봇팔이 옮길 부품: 명령·상태 모양(XML `SetSortTarget`·`Line/@sortTarget`), 정지 상태에서만 바꾸는 규칙, 서버를 다시 켰을 때의 처음 값
 - [ ] 관절 값 단위 (LeRobot 기본 `deg` 권장) — 원점 각도 단위와 같아야 함
 - [ ] 서버 정보 `GET /api/info` 제공 여부 (권장)
 - [ ] 시각에 시간대 넣기 (`+09:00` 또는 `Z`)
@@ -416,3 +436,16 @@ HMI가 하는 일
 | 오류 코드 | — | `422 INVALID_ANGLES` 다시 씀 (원점 복귀 각도), `409 HOME_NOT_SET`은 원점 복귀에 각도가 없을 때 |
 | 명령 이름 | `setHome` | 없앰 |
 | 서버 정보 | `api: "0.4"` | `api: "0.5"` |
+
+## 14. v0.5 → v0.6 바뀐 점
+
+**로봇팔이 옮길 부품을 HMI에서 고릅니다** (사용자 2026-10-17, 4.3장). 모두 더한 것이라 v0.5대로 만든 서버도 동작합니다 — 그때 HMI는 고르기를 보내도 서버가 모른다고 알립니다.
+
+| 바뀐 점 | v0.5 | v0.6 |
+|---|---|---|
+| 명령 | — | `PUT /api/sort-target` `{ "target": "good" \| "defect" }`, 명령 이름 `sortTarget` |
+| 상태 | 로봇팔은 늘 불량품을 옮김 | `sort_target` (`good` · `defect`) — 그 판정의 부품을 옮기고 다른 쪽을 내보냄 |
+| 공정 단계 | `sorting` = 불량품을 옮김, `passing` = 양품을 내보냄 | `sorting` = `sort_target` 부품을 옮김, `passing` = 다른 쪽을 내보냄. 로봇팔 작업 이름 `sort_defect` → `sort_part` |
+| 이벤트 | — | `sort_target_changed` (`target`) |
+| 오류 코드 | — | `422 INVALID_SORT_TARGET` |
+| 서버 정보 | `api: "0.5"` | `api: "0.6"`, `features`에 `sort_target` |
