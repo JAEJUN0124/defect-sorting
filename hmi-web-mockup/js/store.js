@@ -571,9 +571,13 @@
   // ---------- 시작 ----------
 
   // 끊김 판단: 서버 메시지가 정해진 시간 동안 없으면 끊김. XML은 3초(server.xml.statusTimeoutMs) 넘게 없으면 끊김으로 보고
-  // 다시 붙는다 (서버 규약 v1.0 "오류와 연결 처리"). 서버가 상태를 드물게 보내도 HMI의 Ping에 대한 Pong이 1초마다 오므로 끊김으로 보지 않는다
+  // 다시 붙는다 (서버 규약 v1.0 "오류와 연결 처리"). 서버가 상태를 드물게 보내도 HMI의 Ping에 대한 Pong이 pingMs마다 오므로 끊김으로 보지 않는다.
+  // 끊김 시간이 Ping 간격보다 짧으면 Pong을 기다리다 끊김으로 잘못 보므로, 그때는 Ping 간격 + 5초로 쓴다
+  // (사용자 2026-10-16: 연결 확인 60초 — 조용히 끊기면 그만큼 늦게 앎. 서버가 연결을 닫으면 바로 앎)
   setInterval(() => {
-    const limit = api.xml ? (cfg.server.xml && cfg.server.xml.statusTimeoutMs) || 3000 : cfg.heartbeatTimeoutMs;
+    const xml = cfg.server.xml || {};
+    const ping = typeof xml.pingMs === 'number' ? xml.pingMs : 60000;
+    const limit = api.xml ? Math.max(xml.statusTimeoutMs || 65000, ping > 0 ? ping + 5000 : 0) : cfg.heartbeatTimeoutMs;
     const required = api.xml || cfg.heartbeatRequired === true || (cfg.heartbeatRequired !== false && heartbeatSeen);
     if (state.online && required && limit > 0 && Date.now() - state.lastMessageAt > limit) {
       setOnline(false);

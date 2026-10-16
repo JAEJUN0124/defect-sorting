@@ -123,6 +123,41 @@ test('store.js: 원점 잡기 때 각도가 오래됐으면(상태가 드문 서
   assert.equal(asked, 2);
 });
 
+// 끊김 판단: 서버 메시지가 statusTimeoutMs 동안 없으면 끊김. 다만 Ping 간격보다 짧게는 잡지 않는다 (Pong을 기다리다 끊김으로 보지 않게)
+test('store.js: 메시지가 statusTimeoutMs 동안 없으면 끊김으로 보고 다시 붙는다 (Ping을 안 보낼 때)', async () => {
+  let handlers = null;
+  let reconnects = 0;
+  const store = freshStore({
+    connect(h) { handlers = h; },
+    getInfo: async () => null,
+    getHistory: async () => null,
+    getStatus: () => new Promise(() => {}),
+    reconnect() { reconnects += 1; },
+  }, { statusTimeoutMs: 100, pingMs: 0, statusPollMs: 0 });
+  store.start();
+  handlers.onOpen();
+  await new Promise((r) => setTimeout(r, 1200)); // 끊김은 1초마다 본다
+  assert.equal(store.state.online, false);
+  assert.ok(reconnects >= 1);
+});
+
+test('store.js: 끊김 시간이 Ping 간격보다 짧으면 Ping 간격 + 5초로 본다', async () => {
+  let handlers = null;
+  let reconnects = 0;
+  const store = freshStore({
+    connect(h) { handlers = h; },
+    getInfo: async () => null,
+    getHistory: async () => null,
+    getStatus: () => new Promise(() => {}),
+    reconnect() { reconnects += 1; },
+  }, { statusTimeoutMs: 100, pingMs: 1000, statusPollMs: 0 });
+  store.start();
+  handlers.onOpen();
+  await new Promise((r) => setTimeout(r, 1200)); // 100ms가 지났지만 Ping 간격 + 5초(6초) 전이라 끊김이 아니다
+  assert.equal(store.state.online, true);
+  assert.equal(reconnects, 0);
+});
+
 test('store.js: stop()은 서버 연결을 닫는다 (프로그램 종료 — 이 HMI만 끝낸다)', () => {
   let closed = 0;
   const store = freshStore({ connect() {}, close() { closed += 1; } });
