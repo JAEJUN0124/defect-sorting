@@ -26,6 +26,7 @@ cloudflared (장비망 안 PC, 밖으로 나가는 연결만 씀)
 
 - 빌드한 화면은 자기를 내준 주소의 `/ws/hmi`에 붙습니다 (`react/src/server-defaults.js`). 그래서 `wss://hmi.hypefree.net/ws/hmi`로 붙고, 연결 코드는 바꾸지 않았습니다.
 - Worker(`worker.js`)는 `/ws/hmi` 웹소켓만 터널로 넘기고, 서버의 다른 경로는 넘기지 않습니다. 사람의 Access 쿠키는 서버로 보내지 않습니다.
+- 넘기는 방식: Worker가 서버 쪽 웹소켓을 열고 브라우저 쪽 웹소켓을 따로 받아, 둘 사이에서 메시지와 닫힘을 옮깁니다. 서버의 답(101)을 브라우저에 그대로 돌려주는 방식은 이 PC(`wrangler dev`)에서는 됐지만 Cloudflare에서는 브라우저 쪽이 열리지 않아 버렸습니다 (2026-10-17).
 - Worker가 서비스 토큰을 들고 있으므로 화면 주소 앞의 Access 앱이 꼭 있어야 합니다. 같은 이유로 `*.workers.dev`·미리 보기 주소는 열지 않습니다 (`wrangler.jsonc`의 `workers_dev`·`preview_urls`).
 - 서버 담당 README도 외부 연결은 VPN이나 인증·TLS를 갖춘 프록시로 제한하라고 합니다 ([server-xml-v1.0.md](server-xml-v1.0.md)). Access와 Cloudflare의 TLS가 그 역할입니다.
 - 비용: 모두 무료 플랜입니다. Zero Trust는 Free 플랜도 결제 정보를 넣어야 하지만 청구되지 않습니다.

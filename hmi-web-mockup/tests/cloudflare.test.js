@@ -11,7 +11,7 @@ const DIR = path.join(__dirname, '..', 'cloudflare');
 const loadWorker = () => import(pathToFileURL(path.join(DIR, 'worker.js')).href).then((m) => m.default);
 
 const ENV = { ORIGIN: 'https://hmi-origin.example.net', CF_ACCESS_CLIENT_ID: 'id-1', CF_ACCESS_CLIENT_SECRET: 'secret-1' };
-const UPSTREAM = { upstream: true }; // 터널 쪽 답 (실제로는 101과 웹소켓) — Worker는 이것을 그대로 돌려줘야 한다
+const UPSTREAM = { upstream: true }; // 터널 쪽의 101이 아닌 답 (토큰이 틀려 401, 서버가 꺼져 502 등) — Worker는 이것을 그대로 돌려줘야 한다
 
 // 정적 파일(ASSETS)과 바깥으로 나가는 fetch를 흉내 낸다
 function setup(t, env = ENV) {
@@ -57,6 +57,41 @@ test('worker: /ws/hmi 웹소켓은 터널 주소로 — 서비스 토큰을 붙�
   assert.equal(headers.get('sec-websocket-protocol'), 'hmi-xml');
   ['cookie', 'cf-connecting-ip', 'cf-access-jwt-assertion'].forEach((h) => assert.equal(headers.get(h), null, h));
   assert.equal(calls.assets.length, 0);
+});
+
+// 웹소켓 흉내: 보낸 메시지·닫힘을 기록하고, 받은 이벤트를 일으킬 수 있다
+class FakeSocket {
+  constructor() { this.sent = []; this.closed = null; this.accepted = false; this.listeners = {}; }
+  accept() { this.accepted = true; }
+  send(data) { this.sent.push(data); }
+  close(code, reason) { this.closed = { code, reason }; }
+  addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+  emit(type, ev) { (this.listeners[type] || []).forEach((fn) => fn(ev)); }
+}
+
+test('worker: 서버가 101로 받으면 브라우저 쪽 웹소켓을 따로 열어 둘 사이에 메시지와 닫힘을 옮김 (Cloudflare 문서의 중계 방식)', async (t) => {
+  const worker = await loadWorker();
+  const server = new FakeSocket(); // Worker → 터널 주소
+  const client = new FakeSocket(); // 브라우저에 돌려주는 쪽
+  const inner = new FakeSocket(); // Worker가 쥐는 쪽
+  const real = { fetch: globalThis.fetch, Response: globalThis.Response, WebSocketPair: globalThis.WebSocketPair };
+  globalThis.fetch = async () => ({ status: 101, webSocket: server, headers: new Headers() });
+  globalThis.WebSocketPair = class { constructor() { this[0] = client; this[1] = inner; } };
+  globalThis.Response = class { constructor(body, init) { Object.assign(this, init); } }; // node의 Response는 101을 만들지 못한다
+  t.after(() => Object.assign(globalThis, real));
+
+  const res = await worker.fetch(wsRequest('https://hmi.example.net/ws/hmi'), { ...ENV, ASSETS: {} });
+  assert.equal(res.status, 101);
+  assert.equal(res.webSocket, client);
+  assert.ok(server.accepted && inner.accepted);
+  server.emit('message', { data: '<Message type="Status"/>' });
+  assert.deepEqual(inner.sent, ['<Message type="Status"/>']);
+  inner.emit('message', { data: '<Message type="Ping"/>' });
+  assert.deepEqual(server.sent, ['<Message type="Ping"/>']);
+  server.emit('close', { code: 1006, reason: '' }); // 보낼 수 없는 코드는 1000으로
+  assert.deepEqual(inner.closed, { code: 1000, reason: '' });
+  inner.emit('close', { code: 1001, reason: 'bye' });
+  assert.deepEqual(server.closed, { code: 1001, reason: 'bye' });
 });
 
 test('worker: 웹소켓이 아닌 /ws/hmi는 426, 다른 /ws/ 경로는 터널로 보내지 않음 (메인 서버의 다른 경로는 밖에 열지 않는다)', async (t) => {

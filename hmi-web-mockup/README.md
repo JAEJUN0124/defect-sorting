@@ -164,7 +164,7 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 | 시험 | 내용 |
 |---|---|
 | `tests/config.test.js` | 메인 서버에 올렸을 때의 서버 주소(`wsUrl: 'auto'`), 메인 서버용 묶음(React 빌드 포함 — `react/`에서 `npm install`을 안 했으면 건너뜀)과 Cloudflare용 폴더(`--dir`, 다시 쓸 때 지난 파일 지우기·남의 폴더는 안 지움), 개발용 서버의 배치 |
-| `tests/cloudflare.test.js` | 밖에서 여는 HMI: Worker가 `/ws/hmi` 웹소켓만 서비스 토큰을 붙여 터널로 넘기고(사람의 쿠키는 안 넘김) 나머지는 화면 파일로 돌리는지, 토큰이 비면 500, 배포 설정이 `*.workers.dev`·미리 보기 주소를 열지 않는지, wrangler 판 고정, `set-token.py`가 확실히 틀린 값(글자 그대로·터널 토큰·머리말)을 거절하는지 |
+| `tests/cloudflare.test.js` | 밖에서 여는 HMI: Worker가 `/ws/hmi` 웹소켓만 서비스 토큰을 붙여 터널로 넘기고(사람의 쿠키는 안 넘김) 나머지는 화면 파일로 돌리는지, 서버가 101로 받으면 양쪽 웹소켓 사이에서 메시지·닫힘을 옮기는지, 토큰이 비면 500, 배포 설정이 `*.workers.dev`·미리 보기 주소를 열지 않는지, wrangler 판 고정, `set-token.py`가 확실히 틀린 값(글자 그대로·터널 토큰·머리말)을 거절하는지 |
 | `tests/adapter.test.js` | 서버가 보낼 수 있는 형식 변형(이름·단위·묶음·시각·판정·상자·이벤트·오류)이 같은 모양이 되는지 |
 | `tests/transport.test.js` | WebSocket·Socket.IO·SSE·폴링, HTTP·웹소켓 명령, FastAPI 오류 |
 | `tests/xml.test.js` | XML 읽기·쓰기, 서버 규약 v1.0 메시지(서버 문서 예시 그대로)와 요청안 메시지, XML 명령 보내기와 답 찾기(id로 찾고 답에 있는 명령 이름·목표 모드만 비교, 응답 미확인), 연결 확인 Ping, 연결 닫기 |
