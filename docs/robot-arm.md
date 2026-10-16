@@ -7,7 +7,10 @@ PC와 USB로 연결해 LeRobot 프레임워크로 움직입니다. 이 문서는
 출처
 - 키트 설명서 (사용자가 보낸 사진 2장, 2026-10-12): 구성품, 전원, 안전 및 주의사항, 권장 OS
 - LeRobot SO-101 문서: <https://huggingface.co/docs/lerobot/so101> (조립·모터 설정·캘리브레이션)
+- LeRobot 실제 로봇 모방학습 문서: <https://huggingface.co/docs/lerobot/main/en/il_robots> (원격 조작·녹화·학습·실행, 팔 이름 `id`)
 - LeRobot 코드 (main, 2026-10-12에 읽음): `robots/so_follower`, `teleoperators/so_leader`, `motors/feetech/feetech.py`·`tables.py`, `motors/motors_bus.py`
+- LeRobot 코드 다시 확인 (main `297774f`, 2026-10-16에 읽음): `pyproject.toml`(Python 3.12 이상, 설치 묶음 `core_scripts`), `so_follower`·`so_leader` 설정(`use_degrees` 기본 켜짐), `motors_bus.py`의 각도 계산(2장의 식과 같음)
+- LeRobot 조립 후 기술 가이드 (사용자가 보낸 문서, 2026-10-16): 공식 문서·코드를 정리한 2차 자료. 이 문서에는 공식 코드로 다시 확인한 것만 옮김
 - Feetech STS 메모리 표 단위·기본값: 제3자 정리 문서 "FEETECH STS Servo – Memory Table Analysis"(aifitlab wiki) — 주소는 LeRobot `tables.py`와 같음
 
 ## 1. 키트 구성
@@ -63,12 +66,12 @@ LeRobot 명령(모터 ID 설정·캘리브레이션·원격 조작)은 **서버 
 
 | 순서 | 어디서 | 할 일 | 확인 |
 |---|---|---|---|
-| 1 | 서버 PC | `pip install -e ".[feetech]"` (LeRobot) | — |
+| 1 | 서버 PC | Python 3.12 이상에서 `pip install -e ".[core_scripts,feetech]"` (LeRobot. `core_scripts`는 캘리브레이션·원격 조작·녹화 명령에 필요한 묶음) | — |
 | 2 | 서버 PC | `lerobot-find-port` — 팔마다 USB 포트 찾기 | 장치 점검의 "USB 포트 고르기"에 칩 이름(CH340·CH343 등)이 보임 |
 | 3 | 서버 PC | `lerobot-setup-motors` — 서보 하나씩 꽂아 ID 1~6, 1Mbps로 (팔로워·리더 각각) | 장치 점검에서 "서보 6개(ID 1~6)가 모두 답합니다" |
 | 4 | — | 어댑터 확인: 리더 7.5V, 팔로워 12V | 장치 점검에서 "전원 ○V (정격과 맞음)" |
-| 5 | 서버 PC | `lerobot-calibrate` — 가운데 자세 → 관절마다 끝까지 (팔로워·리더 각각) | 장치 점검에서 "최소·최대 위치가 기록되어 있습니다" |
-| 6 | 서버 PC | `lerobot-teleoperate` — 리더로 팔로워 움직여 보기 | — |
+| 5 | 서버 PC | `lerobot-calibrate` — 가운데 자세 → 관절마다 끝까지 (팔로워·리더 각각). 팔 이름을 붙임: `--robot.id=follower_01`, `--teleop.id=leader_01` | 장치 점검에서 "최소·최대 위치가 기록되어 있습니다" |
+| 6 | 서버 PC | `lerobot-teleoperate` — 리더로 팔로워 움직여 보기 (5번과 같은 팔 이름) | — |
 | 7 | HMI | 서버를 끈 상태에서 장치 점검의 "자세 저장" — 로봇팔을 작업 자세(`wait`·`above_pick`·`pick`·`above_bin`·`rest`)에 차례로 두고 저장 → 서버 쪽 로봇팔 설정의 `poses`에 붙여 넣기 ([로봇팔 제어 약속](arm-control.md) 3장) | 서버의 불량품 옮기기 작업이 그 자세로 움직임 |
 | 8 | 서버 PC | `lerobot-find-cameras opencv` — 카메라 번호 | 장치 점검의 카메라 찾기에서 1280×720이 나오는지 |
 | 9 | HMI | 아두이노 스케치를 올린 뒤 장치 점검의 "컨베이어 규약 점검" ([컨베이어 시리얼 규약](conveyor-protocol.md)) | 점검 줄이 모두 "정상" |
@@ -76,6 +79,9 @@ LeRobot 명령(모터 ID 설정·캘리브레이션·원격 조작)은 **서버 
 | 11 | HMI | 조작 화면에서 수동 모드 → 리더암으로 로봇팔을 원점으로 쓸 자세에 두고 "원점 잡기" (확인 창) | 대시보드 탭 시안의 조작·시스템 탭에 저장한 원점과 시각이 보임. 원점은 그 PC의 브라우저에 저장되므로 HMI를 쓸 PC에서 함 |
 
 서보 버스(USB 포트)와 카메라는 **한 프로그램만** 열 수 있습니다. 장치 점검은 서버를 끈 상태에서 쓰세요.
+
+팔 이름(`--robot.id`·`--teleop.id`)은 LeRobot이 캘리브레이션 파일을 저장하고 찾는 이름입니다. 캘리브레이션·원격 조작·녹화(`lerobot-record`)·정책 실행(`lerobot-rollout`)에서 늘 같은 이름을 쓰세요 (이 문서에서는 로봇팔 `follower_01`, 리더암 `leader_01`).
+다른 이름으로 실행하면 LeRobot은 캘리브레이션 파일이 없다고 보고 새 캘리브레이션을 시작합니다. 새로 하면 원점·자세를 다시 잡아야 합니다 (6장).
 
 ## 5. 장치 점검 도구 (`tools/devices.html`)
 
@@ -97,6 +103,8 @@ Chrome·Edge에서 `http://localhost:5173/tools/devices.html` (USB 포트는 Web
   로봇팔 두 개와 컨베이어의 DC 전원을 한 번에 끊는 버섯머리 비상정지 스위치를 다는 것을 권합니다(달면 `hardwareStop: 'button'`).
 - **어댑터를 바꿔 꽂지 않기**: 리더(7.4V급 서보)에 12V를 넣으면 서보가 상할 수 있습니다. HMI는 서보 전압으로 이를 알아채 "비상"으로 기록하고, 가짜 서버는 수동 모드 시작을 거절합니다(`POWER_ABNORMAL`).
 - **과열**: 설명서는 상하좌우 10cm 이상 통풍을 확보하라고 합니다. 오래 버티는 자세(어깨 들기·팔꿈치)는 온도가 오르기 쉬워, 대시보드에서 온도를 지시계로 봅니다.
+- **캘리브레이션을 다시 하면 원점·자세도 다시 잡기**: 각도는 캘리브레이션 때 기록한 범위의 가운데가 0°입니다 (2장, 그리퍼는 그 범위의 0~100%). 그래서 캘리브레이션을 다시 하거나, 서보를 바꾸거나, 혼(서보 축에 끼우는 부품)을 다시 끼우면 같은 값이 다른 자세를 가리킵니다.
+  그 뒤에는 HMI의 "원점 잡기"와 장치 점검의 "자세 저장"을 다시 하고, 다시 잡기 전에는 원점 복귀와 자동 작업을 하지 않습니다. HMI는 원점을 어느 캘리브레이션에서 잡았는지 모르므로 화면이 막아 주지 않습니다.
 - **젖은 손·파손된 케이블 금지** (설명서).
 
 ## 7. 확인하지 못한 것
