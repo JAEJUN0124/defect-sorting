@@ -103,7 +103,7 @@ window.HMI_I18N.ko = {
   'sort.unset': '아직 고르지 않았습니다. 고르면 서버에 알립니다.',
 
   // 리더암 관절
-  'joints.title': '리더암 각도',
+  'joints.title': '팔로워암 각도',
   'joint.shoulder_pan': '어깨 회전',
   'joint.shoulder_lift': '어깨 들기',
   'joint.elbow_flex': '팔꿈치',
@@ -163,7 +163,7 @@ window.HMI_I18N.ko = {
   'log.empty': '아직 기록이 없습니다. 라인을 시작하면 여기에 쌓입니다.',
 
   // 장치
-  'devices.title': '장치 연결 (개발용)',
+  'devices.title': '장치 연결',
   'devices.toggleHint': '눌러서 연결 끊김을 흉내 냅니다 (가짜 서버 전용)',
   'devices.disconnected': '끊김',
   'device.server': '서버',

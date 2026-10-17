@@ -10,6 +10,11 @@ window.HMI_ROBOT = {
   // 서버가 보내는 서보 부하의 단위: 'auto'(100을 넘는 값을 보면 그 뒤로 서보 원시값으로 읽음) · 'pct'(%) · 'permille'(원시값, 0.1%)
   loadUnit: 'auto',
 
+  // 퍼센트로 온 관절(LeRobot 그리퍼 0~100 = 캘리브레이션 범위의 비율)을 화면에서 도로 바꿔 보일 때의 범위: [0%일 때 도, 100%일 때 도].
+  // 캘리브레이션 범위를 아직 몰라 임의로 정한 값입니다 (사용자 2026-10-17). SO-101 그리퍼는 다 닫힘~다 열림이 대략 100° 안팎이라 0~100°.
+  // 범위를 알면 [0, (range_max − range_min) × 360 / 4096]으로 바꿉니다. 적지 않은 관절은 [0, 100]. 원점 복귀 때 서버로 보내는 값은 받은 단위 그대로입니다
+  percentToDeg: { gripper: [0, 100] },
+
   // 관절 순서 = 모터 번호(1~6). LeRobot SO-101 표기
   joints: ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper'],
 

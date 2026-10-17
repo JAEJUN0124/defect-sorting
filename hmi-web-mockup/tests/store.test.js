@@ -218,3 +218,13 @@ test('store.js: 로봇팔이 옮길 부품 — 서버가 알려 주면 그 값, 
   assert.equal(store.errorText({ code: 'XML_INVALID_COMMAND', details: { command: 'SetSortTarget' } }), 'error.sortTarget.unsupported');
   assert.equal(store.errorText({ code: 'XML_UNKNOWN_COMMAND', details: { command: 'SetSortTarget' } }), 'error.sortTarget.unsupported');
 });
+
+test('store.js: 퍼센트로 온 관절(그리퍼)은 화면에서 도로 바꿔 보인다 — 범위는 config/robot.js percentToDeg(없으면 0~100°), 도는 그대로', () => {
+  const store = freshStore({ connect() {}, getInfo: async () => null, getStatus: async () => ({}), getHistory: async () => null });
+  assert.equal(store.shownAngle('gripper', 10, 'pct'), 10); // 범위를 적지 않으면 0~100% → 0~100°
+  assert.equal(store.shownAngle('elbow_flex', -12.5, 'deg'), -12.5);
+  assert.equal(store.shownAngle('gripper', undefined, 'pct'), undefined);
+  window.HMI_ROBOT.percentToDeg = { gripper: [0, 120] }; // 캘리브레이션 범위를 알면 바꾸는 값
+  assert.equal(store.shownAngle('gripper', 50, 'pct'), 60);
+  assert.equal(store.shownAngle('wrist_roll', -50, 'pct'), -50);
+});

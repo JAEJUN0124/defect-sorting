@@ -444,6 +444,13 @@
 
   const jointName = (id) => known('joint.' + id, id);
   const armName = (id) => known('arm.' + id, id);
+  // 화면에 보일 관절 각도(도). 퍼센트로 온 값(그리퍼 0~100)은 config/robot.js percentToDeg의 범위로 바꾼다 — 임의 범위 (사용자 2026-10-17).
+  // 화면 표시에만 쓴다. 원점 저장·원점 복귀는 서버가 보낸 값과 단위 그대로
+  function shownAngle(joint, value, unit) {
+    if (typeof value !== 'number' || unit !== 'pct') return value;
+    const range = (robot.percentToDeg && robot.percentToDeg[joint]) || [0, 100];
+    return range[0] + (range[1] - range[0]) * value / 100;
+  }
   // 멈춘 이유: 고장 코드(GRIP_FAILED — XML 서버는 GripFailed처럼 보내도 됨)나 컨베이어가 멈춘 이유(watchdog 등)
   const reasonText = (code) => known('reason.' + code, known('reason.' + String(code).replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase(), code));
 
@@ -722,6 +729,7 @@
     setSortTarget,
     deviceName,
     jointName,
+    shownAngle,
     armName,
     eventText,
     faultText,

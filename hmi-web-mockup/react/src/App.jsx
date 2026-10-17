@@ -405,12 +405,12 @@ export default function App() {
               <p className="joints__title">{t('joints.title')}</p>
               <dl className="joints__list" id="joints-list">
                 {JOINTS.map((j) => {
-                  const v = leader && leader.angles ? leader.angles[j] : undefined;
-                  const unit = leader && leader.units && leader.units[j] === 'pct' ? '%' : '°';
+                  // 퍼센트로 온 값(그리퍼)도 도로 바꿔 보인다 (store.shownAngle — 임의 범위, 화면 표시만)
+                  const v = leader && leader.angles ? store.shownAngle(j, leader.angles[j], leader.units && leader.units[j]) : undefined;
                   return (
                     <div key={j}>
                       <dt>{t('joint.' + j)}</dt>
-                      <dd>{typeof v === 'number' ? Math.round(v) + unit : '–'}</dd>
+                      <dd>{typeof v === 'number' ? Math.round(v) + '°' : '–'}</dd>
                     </div>
                   );
                 })}
