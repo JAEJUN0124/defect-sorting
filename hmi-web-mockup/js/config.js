@@ -18,6 +18,11 @@ window.HMI_CONFIG = {
   // 주소 뒤에 ?dev=0 또는 ?dev=1 을 붙이면 이 값보다 우선합니다.
   devMode: true,
 
+  // 늘 켜짐으로 보일 장치. 서버가 끊김이라고 보내도 장치 연결 줄에 켜짐으로 보이고 "항상 켜짐"이라고 씁니다.
+  // 컨베이어가 늦어져 그동안 다른 일을 먼저 진행합니다 (사용자 2026-10-19). 컨베이어를 붙이면 []로 되돌립니다.
+  // 주소 뒤에 ?alwaysOn=conveyor(쉼표로 여럿) 또는 ?alwaysOn=(비움)을 붙이면 이 값보다 우선합니다.
+  alwaysOn: ['conveyor'],
+
   // 서버 메시지가 이 시간 동안 없으면 연결 끊김으로 표시합니다.
   // heartbeatRequired: 'auto'면 서버가 heartbeat를 한 번이라도 보낸 뒤부터만 이 시간을 잽니다
   //   (heartbeat를 안 보내는 서버를 6초마다 끊김으로 잘못 표시하지 않도록). true = 늘 잼, false = 재지 않음
@@ -104,6 +109,8 @@ window.HMI_CONFIG = {
   }
   if (['ws', 'socketio', 'sse', 'poll'].includes(params.get('push'))) cfg.server.push = params.get('push');
   if (params.get('homePose') === '0' || params.get('homePose') === '1') cfg.server.xml.homePose = params.get('homePose') === '1';
+  // 늘 켜짐으로 보일 장치: ?alwaysOn=conveyor,leader · ?alwaysOn= (없음)
+  if (params.has('alwaysOn')) cfg.alwaysOn = params.get('alwaysOn').split(',').map((s) => s.trim()).filter(Boolean);
 
   let saved = null;
   try { saved = localStorage.getItem('hmi.theme'); } catch (e) { /* 저장소가 막힌 브라우저 */ }

@@ -43,6 +43,13 @@ test('config.js: 주소 뒤 ?ws=auto도 같고, ?ws=주소는 그 주소를 쓴�
   assert.equal(plain.useMock, true); // 기본은 브라우저 안 가짜 서버
 });
 
+// 컨베이어가 늦어져 장치 연결 줄에 늘 켜짐으로 보인다 (사용자 2026-10-19). 배열은 다른 실행 공간에서 만들어져 펼쳐서 비교한다
+test('config.js: alwaysOn 기본은 컨베이어이고, 주소 뒤 ?alwaysOn=으로 바꾸거나(쉼표로 여럿) 비운다', () => {
+  assert.deepEqual([...loadConfig('http://localhost:5174/').alwaysOn], ['conveyor']);
+  assert.deepEqual([...loadConfig('http://localhost:5174/?alwaysOn=').alwaysOn], []);
+  assert.deepEqual([...loadConfig('http://localhost:5174/?alwaysOn=conveyor,%20leader').alwaysOn], ['conveyor', 'leader']);
+});
+
 const PY = ['python', 'python3'].find((cmd) => { try { return spawnSync(cmd, ['--version']).status === 0; } catch (e) { return false; } });
 
 const REACT = path.join(__dirname, '..', 'react');

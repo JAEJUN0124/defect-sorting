@@ -293,6 +293,9 @@ export default function App() {
 
   // 장치 연결 (개발용): 서버 → 컨베이어 → 로봇팔 → 리더암 → 카메라들(서버 목록 순) → 그 밖.
   // 브릿지 영상의 카메라는 영상을 보는 동안 /video/status로 (XML의 RobotArm·Status로 대신 판단하지 않는다 — 안내 7장)
+  // config.js alwaysOn의 장치는 서버 값과 상관없이 켜짐으로 보인다 (컨베이어가 늦어져서, 사용자 2026-10-19).
+  // 보이는 것만 바꾼다 — 장치가 끊겨 거절된 안내를 지우는 것(위 'status')은 서버가 보낸 값으로 한다
+  const alwaysOn = (name) => name !== 'server' && (cfg.alwaysOn || []).includes(name);
   let deviceIds = [];
   const videoCams = bridge && store.state.video.on ? cams.map((c) => 'camera_' + c) : [];
   if (cfg.devMode) {
@@ -304,6 +307,7 @@ export default function App() {
   }
   const deviceOn = (name) => {
     if (name === 'server') return online;
+    if (alwaysOn(name)) return true;
     if (videoCams.includes(name)) return store.videoPhase(name.slice(7)) === 'live';
     return !!(S && S.devices[name] === 'connected');
   };
@@ -485,18 +489,20 @@ export default function App() {
               <ul className="devices__list" id="device-list">
                 {deviceIds.map((name) => {
                   const on = deviceOn(name);
+                  const forced = alwaysOn(name);
                   return (
                     <li key={name}>
-                      {/* 가짜 서버면 누를 때마다 연결 끊김을 흉내 낸다 */}
+                      {/* 가짜 서버면 누를 때마다 연결 끊김을 흉내 낸다 (늘 켜짐으로 보이는 장치는 빼고) */}
                       <button
-                        type="button" className="device" disabled={!api.mock}
-                        title={api.mock ? t('devices.toggleHint') : undefined}
+                        type="button" className="device" disabled={!api.mock || forced}
+                        title={api.mock && !forced ? t('devices.toggleHint') : undefined}
                         onClick={() => api.mock.setDevice(name, !deviceOn(name))}
                       >
                         <span className="lamp" data-color={on ? 'green' : 'off'} />
                         <span>{name === 'server' ? t('device.server') : store.deviceName(name)}</span>
-                        {/* 색만으로 알리지 않도록 끊김은 글자로도 쓴다 */}
+                        {/* 색만으로 알리지 않도록 끊김은 글자로도 쓴다. 늘 켜짐으로 보이는 장치는 서버 값이 아니라고 쓴다 */}
                         <span hidden={on}>{t('devices.disconnected')}</span>
+                        <span hidden={!forced}>{t('devices.alwaysOn')}</span>
                       </button>
                     </li>
                   );

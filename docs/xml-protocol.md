@@ -86,7 +86,7 @@ HMI와 서버는 웹소켓 하나로 XML을 주고받습니다 (D-002). 기준�
 | 받는 것 | 화면 |
 |---|---|
 | `Status/@source` | `simulation`이면 상태 설명에 "화면 값은 서버의 시험용 가상 데이터입니다", `unavailable`이면 "서버에 연결된 장비가 없습니다" |
-| `Conveyor/@connected` · `RobotArm/@connected` | 장치 연결 (컨베이어·로봇팔) |
+| `Conveyor/@connected` · `RobotArm/@connected` | 장치 연결 (컨베이어·로봇팔). 컨베이어는 지금 화면에서 이 값과 상관없이 "항상 켜짐"으로 보임 — 컨베이어가 늦어져서 (사용자 2026-10-19, `config.js` `alwaysOn`). 장치가 끊겨 거절된 안내는 이 값으로 지움 |
 | `Conveyor/@running` | 읽어 두지만 지금 화면에는 보이지 않음 (보이던 탭 대시보드는 2026-10-17에 없앰) |
 | `RobotArm/Motors` | **리더암 각도** (서버 담당 답, 사용자 2026-10-14). 운전 모드를 모르는 동안은 조작 화면에 늘 보임(화면 제목은 "팔로워암 각도", 사용자 2026-10-17). `valid="false"`면 `–`. 모두 도(°)로 보임 — `unit="percent"`로 온 값(2026-10-17부터 서버가 6번 그리퍼를 percent로 보냄)은 `config/robot.js`의 `percentToDeg` 범위(임의, 기본 0~100% → 0~100°)로 바꿔 보임. 원점 저장·원점 복귀 값은 받은 단위 그대로 |
 | `Inspection` | 검사·양품·불량·불량률. `valid="false"`면 0 대신 `–` |

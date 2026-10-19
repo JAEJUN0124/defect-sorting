@@ -166,6 +166,7 @@ window.HMI_I18N.ko = {
   'devices.title': '장치 연결',
   'devices.toggleHint': '눌러서 연결 끊김을 흉내 냅니다 (가짜 서버 전용)',
   'devices.disconnected': '끊김',
+  'devices.alwaysOn': '항상 켜짐',
   'device.server': '서버',
   'device.conveyor': '컨베이어',
   'device.arm': '로봇팔',
