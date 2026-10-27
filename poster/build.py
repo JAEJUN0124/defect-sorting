@@ -67,7 +67,7 @@ TEXT = {
         ('긴급정지', [('누르면', '컨베이어와 로봇팔을 바로 멈춥니다'),
                      ('해제', '확인 창을 거쳐 풀고, 원점 복귀 뒤에 다시 시작합니다')]),
     ],
-    'features_v9': [                              # 웹 HMI 조작 화면 (hmi-web-mockup/README.md). (이름, 보충 두 줄)
+    'features_v9': [                              # 9 · 10안. 웹 HMI 조작 화면 (hmi-web-mockup/README.md). (이름, 보충 두 줄)
         ('시작 · 정지', ['키 하나로', '켜고 끄기']),
         ('원점', ['잡기 · 복귀', '수동에서 저장']),
         ('옮길 부품', ['양품 · 불량품', '중에서 고르기']),
@@ -560,6 +560,7 @@ V7_TITLE = 538                     # 제목 첫 줄 기준선. 줄 간격·설�
 V7_STEPS = 670                     # "작동 과정" 기준선
 V7_SYSTEM = 729                    # "시스템 구성" 기준선
 V7_FOOTER = 799                    # 학과·팀원 기준선. 아래 여백은 1안과 같은 36
+V7_HEADING = (V7_TITLE, 54, 64, 43)  # 제목 첫 줄 기준선, 글자 크기, 줄 간격, 둘째 줄에서 한 줄 설명까지
 # 8안은 학과·팀원을 맨 아래 줄에서 머리로 올렸다 (사용자 2026-10-27). 로고 옆에 학교 / 학과, 오른쪽에 사업명 / 팀원 두 줄씩.
 V8_HEAD = (63, 86)                 # 머리 두 줄의 기준선. 두 줄 덩어리가 로고(38~96)의 가운데 67에 온다
 # 머리 글자 둘레 8 안에는 별을 두지 않는다 — 팀원 이름 바로 아래(5)의 별 하나가 점처럼 읽혀서.
@@ -577,12 +578,22 @@ V9_STEPS = 565                     # 작동 과정 (네 단계, 두 줄 설명)
 V9_PAIRS = 637                     # 운전 모드 · 긴급정지
 V9_FEATURES = 692                  # 웹 HMI 주요 기능 (여덟 칸)
 V9_SYSTEM = V8_SYSTEM              # 시스템 구성은 8안 자리 그대로 — 상자 아래 끝 799, 아래 여백 36
+# 10안: 8안에 웹 HMI 주요 기능 한 줄(9안의 여덟 칸)만 더한 안 (사용자 2026-10-27 — 8안 인상은 지키며 설명을 보탬).
+# 그림을 0.8배로 줄여 검사 자리를 38 올리고(원 꼭대기는 머리 아래 26), 제목을 50으로 줄여 한 줄 자리를 만든다.
+V10_ART = {'scale': 0.8, 'inspect': 400, 'reflection': 0.4}    # 원 꼭대기 400 - 2 × 174 × 0.8 ≈ 122, 비친 원은 8안과 같은 비율
+V10_HEADING = (491, 50, 59, 40)    # 8안 538 · 54 · 64 · 43을 50에 맞춘 값
+# 설명 아래 끝(약 593.5)과 시스템 구성 위 끝(751.3) 사이에 작동 과정(글자 높이 47.8)과 기능(56.3)을 놓고,
+# 남는 54를 세 틈에 18씩 나눈다 (7안의 틈 16~17과 비슷하게)
+V10_STEPS = 620.7
+V10_FEATURES = 686.4
 V7_VERSIONS = {                    # 7안 틀로 만드는 안. 그림·크기·설명은 같고 아래 값만 다르다
     'v7': {'title': TEXT['title']},
     'v8': {'title': TEXT['title_v8'], 'program': TEXT['program_v8'], 'team_on_top': True,
            'steps': V8_STEPS, 'system': V8_SYSTEM},
     'v9': {'title': TEXT['title_v8'], 'program': TEXT['program_v8'], 'team_on_top': True,
            'art': V9_ART, 'layout': 'v9'},
+    'v10': {'title': TEXT['title_v8'], 'program': TEXT['program_v8'], 'team_on_top': True,
+            'art': V10_ART, 'heading': V10_HEADING, 'steps': V10_STEPS, 'features': V10_FEATURES, 'system': V8_SYSTEM},
 }
 
 
@@ -620,8 +631,8 @@ def v7_conveyor(art=V7_ART):
         out.append(f'<circle cx="{x}" cy="{f(y + belt / 2)}" r="{f(3.2 * s)}" fill="none" stroke="{SHELL}" '
                    f'stroke-opacity=".9" stroke-width="1"/>')
     # 부품: 1안처럼 42 간격. 검사 자리는 로봇팔이 들어 올려 비어 있다. 가장 바깥 부품이 7·8안처럼 양끝 롤러 안쪽
-    # (가운데에서 230 안)에 오도록 그림 크기에 맞춰 수를 정한다 — 0.9배면 6개씩, 9안(0.68배)은 8개씩
-    for k in range(1, int(230 / (42 * s)) + 1):
+    # (가운데에서 240 안)에 오도록 그림 크기에 맞춰 수를 정한다 — 0.9배면 6개씩, 10안(0.8배)은 7개씩, 9안(0.68배)은 8개씩
+    for k in range(1, int(240 / (42 * s)) + 1):
         for x in (V7_PX - 42 * k * s, V7_PX + 42 * k * s):
             out.append(f'<rect x="{f(x - part / 2)}" y="{f(y - part)}" width="{f(part)}" height="{f(part)}" '
                        f'rx="{f(1.2 * s)}" fill="{SHELL}"/>')
@@ -784,15 +795,18 @@ def v7_head(lines, program, team_on_top):
     return out
 
 
-def v7_content(lines, title, program=TEXT['program'], team_on_top=False, steps=V7_STEPS, system=V7_SYSTEM):
-    """7·8안의 글자와 도표: 머리, 제목 두 줄, 한 줄 설명, 작동 과정, 시스템 구성, (7안) 학과·팀원 줄."""
+def v7_content(lines, title, program=TEXT['program'], team_on_top=False, steps=V7_STEPS, system=V7_SYSTEM,
+               heading=V7_HEADING, features=None):
+    """7·8·10안의 글자와 도표: 머리, 제목 두 줄, 한 줄 설명, 작동 과정, (10안) 웹 HMI 주요 기능, 시스템 구성,
+    (7안) 학과·팀원 줄. heading은 (제목 첫 줄 기준선, 글자 크기, 줄 간격, 둘째 줄에서 설명까지)."""
     t = TEXT
     right = V7_W - 40
     out = v7_head(lines, program, team_on_top)
-    for i, line in enumerate(title):
-        out.append(text(38, V7_TITLE + 64 * i, line, 54, 600, NAVY, spacing=-1.2))
-    out.append(text(40, V7_TITLE + 64 + 43, t['description'], 17, 500, NAVY))
-    out += v7_steps(steps) + v7_system(system)
+    y, size, gap, to_desc = heading
+    for i, line in enumerate(title):                # 글자 사이는 54에 -1.2와 같은 비율
+        out.append(text(38, y + gap * i, line, size, 600, NAVY, spacing=-1.2 * size / 54))
+    out.append(text(40, y + gap + to_desc, t['description'], 17, 500, NAVY))
+    out += v7_steps(steps) + (v9_features(features) if features is not None else []) + v7_system(system)
     if not team_on_top:
         out.append(text(40, V7_FOOTER, t['department'], 13, 500, NAVY))
         out += [text(right - 62 * i, V7_FOOTER, name, 15, 500, NAVY, 'end')
