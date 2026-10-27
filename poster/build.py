@@ -8,6 +8,7 @@ PDF·PNG는 Edge나 Chrome을 화면 없이 띄워 뽑는다. 글꼴은 Noto San
 """
 import math
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -26,12 +27,26 @@ TEXT = {
     'school': '대림대학교',
     'program': '2026 경기도 앵커 사업',
     'title': ['불량을 골라내는', '눈과 손'],          # 줄마다 하나 (6안은 1안 파일의 제목을 그대로 쓴다)
+    'title_v8': ['불량을 찾는 눈,', '골라내는 손'],   # 8안. 눈(카메라)이 찾고 손(로봇팔)이 고른다는 것이 제목에서 읽히게
     'subtitle': '카메라로 찾고, 로봇팔로 골라내는 불량품 자동 선별 라인',          # 4·5안
     'description': '카메라가 양품과 불량을 가리고, 로봇팔이 불량품만 골라 옮깁니다.',   # 6안. 1안의 두 줄 설명을 한 줄로
     'flows': [                                   # (이름, 차례, 사이 기호)
         ('작동 과정', ['이송', '촬영·판정', '분류'], '→'),
         ('시스템 구성', ['웹 HMI', '서버', '장치'], '↔'),
     ],
+    # 7안. 단계마다 한 줄씩만. 판정 방법(모델 등)은 정해지지 않아 적지 않는다.
+    'steps': [
+        ('이송', '컨베이어가 부품을 검사 자리로 옮깁니다'),
+        ('판정', '카메라 영상으로 양품과 불량을 가립니다'),
+        ('분류', '로봇팔이 불량품을 집어 따로 옮깁니다'),
+    ],
+    'system': {                                   # (이름, 한 줄 보충)
+        'hmi': ('웹 HMI', 'React · 조작 화면'),
+        'server': ('서버', '.NET · 공정 제어'),
+        'link': '웹소켓 · XML',
+        'devices': [('컨베이어', '부품 이송'), ('카메라 2대', '탑뷰 · 그리퍼'),
+                    ('로봇팔', 'SO-ARM101'), ('리더암', '수동 조작')],
+    },
     'department': '스마트소프트웨어학과',
     'members': ['이강현', '전범수', '황재준'],
 }
@@ -500,6 +515,203 @@ def restored_v1():
     return '\n'.join(lines)
 
 
+# ---------- 7안: 1안에 작동 과정·시스템 구성을 더한 안 ----------
+# 1안의 별·원·로봇팔은 그대로 쓰되 검사 자리를 중심으로 조금 줄여 올리고, 넓어진 산호 바닥에 작동 과정과 시스템 구성을 둔다.
+# Make Poster 플러그인 형식의 HTML 한 장이다. @page가 종이 크기를 정하고, .poster의 안쪽 여백(V7_SAFE)이 글자가 넘지 말아야 할 선이다.
+# 종이 끝까지 닿는 그림은 .poster 밖의 SVG에 두어 넘침 검사(check-fit)에서 뺀다.
+V1_GROUND = 493                    # 1안의 바닥 경계
+V7_W, V7_H = 595, 835              # 7안 종이 크기 (제출 규격). A1보다 가로 1 넓고 세로 6 짧다
+V7_PX = V7_W / 2                   # 7안의 검사 자리 가로 위치. 가운데가 PX(297)인 1안 그림을 여기로 옮긴다
+V7_SCALE = 0.9                     # 원·로봇팔·카메라·부품 크기 (1안 = 1). 원 꼭대기는 1안과 거의 같은 높이에 남는다
+V7_INSPECT_Y = 438                 # 검사 자리 (1안보다 42 위)
+V7_GROUND = V7_INSPECT_Y + 13 * V7_SCALE
+V7_REFLECTION = 0.45               # 바닥에 비친 원의 깊이 (1안 = 1)
+V7_SAFE = (30, 38)                 # 글자 안전 여백 (위아래, 좌우). 1안의 글자가 이미 이 안에 있다
+V7_TITLE = 538                     # 제목 첫 줄 기준선. 줄 간격·설명까지의 거리는 1안과 같다
+V7_STEPS = 670                     # "작동 과정" 기준선
+V7_SYSTEM = 729                    # "시스템 구성" 기준선
+V7_FOOTER = 799                    # 학과·팀원 기준선. 아래 여백은 1안과 같은 36
+V7_TITLES = {                      # 7안 틀로 만드는 안. 그림·크기·설명은 같고 제목만 다르다
+    'v7': TEXT['title'],
+    'v8': TEXT['title_v8'],
+}
+
+
+def v1_group(lines, gid):
+    """1안 파일에서 <g id="gid"> 묶음을 통째로 꺼낸다."""
+    starts = [i for i, line in enumerate(lines) if line.startswith(f'<g id="{gid}"')]
+    if len(starts) != 1:
+        raise SystemExit(f'v1/poster.svg에서 {gid} 묶음을 찾지 못했습니다. 1안 파일이 바뀌었는지 확인하세요.')
+    out, depth = [], 0
+    for line in lines[starts[0]:]:
+        out.append(line)
+        depth += line.count('<g') - line.count('</g>')
+        if depth == 0:
+            return out
+
+
+def v7_shrunk(lines):
+    """1안 그림을 검사 자리를 중심으로 V7_SCALE만큼 줄여 (V7_PX, V7_INSPECT_Y)로 옮긴다."""
+    return [f'<g transform="translate({f(V7_PX)} {f(V7_INSPECT_Y)}) scale({f(V7_SCALE)}) '
+            f'translate({f(-PX)} {-V1_INSPECT_Y})">', *lines, '</g>']
+
+
+def v7_conveyor():
+    """1안 모양의 컨베이어. 띠는 1안처럼 양옆 여백(40)까지 닿고, 롤러·부품만 줄여 그만큼 더 놓는다."""
+    s, y = V7_SCALE, V7_INSPECT_Y
+    belt, part = 13 * s, 12 * s
+    out = ['<g id="line">',
+           f'<rect x="40" y="{f(y)}" width="{V7_W - 80}" height="{f(belt)}" rx="{f(belt / 2)}" fill="{STEEL}"/>',
+           f'<path d="M47 {f(y + .6)}H{V7_W - 47}" stroke="{SHELL}" stroke-width="1.1" stroke-opacity=".9"/>']
+    for k in range(-20, 21):                       # 롤러: 1안처럼 21 간격
+        x = V7_PX + (21 * k - 8) * s
+        if 56 <= x <= V7_W - 56:
+            out.append(f'<circle cx="{f(x)}" cy="{f(y + 6.8 * s)}" r="{f(1.25 * s)}" fill="{SHELL}" opacity=".35"/>')
+    for x in (46.5, V7_W - 46.5):
+        out.append(f'<circle cx="{x}" cy="{f(y + belt / 2)}" r="{f(3.2 * s)}" fill="none" stroke="{SHELL}" '
+                   f'stroke-opacity=".9" stroke-width="1"/>')
+    for k in range(1, 7):                          # 부품: 1안처럼 42 간격. 검사 자리는 로봇팔이 들어 올려 비어 있다
+        for x in (V7_PX - 42 * k * s, V7_PX + 42 * k * s):
+            out.append(f'<rect x="{f(x - part / 2)}" y="{f(y - part)}" width="{f(part)}" height="{f(part)}" '
+                       f'rx="{f(1.2 * s)}" fill="{SHELL}"/>')
+    out.append('</g>')
+    return out
+
+
+def v7_stars(lines):
+    """1안의 별. 원이 작아지고 컨베이어가 올라와 새로 드러나는 별 가운데, 원이나 컨베이어에 붙는 것은 뺀다."""
+    reach = 174 * V7_SCALE                         # 1안의 가장 큰 원 반지름
+    cy = V7_INSPECT_Y - reach
+    out = []
+    for line in v1_group(lines, 'stars'):
+        m = re.search(r'cx="([\d.]+)" cy="([\d.]+)"', line)
+        if m:
+            x, y = float(m[1]), float(m[2])
+            if y > V7_INSPECT_Y - 25 or math.hypot(x - V7_PX, y - cy) < reach + 12:
+                continue
+        out.append(line)
+    return out
+
+
+def v7_art(lines):
+    """종이 끝까지 닿는 그림. 1안에서 별·원·비친 원·로봇팔을 가져오고, 6안처럼 카메라와 금 간 불량품을 넣는다."""
+    arm = v1_group(lines, 'arm')
+    arm[arm.index(V1_DEFECT)] = '\n'.join(bad_part(PX, 474, 12))
+    return [f'<svg viewBox="0 0 {V7_W} {V7_H}" aria-hidden="true">',
+            f'<rect width="{V7_W}" height="{V7_H}" fill="{NAVY}"/>',
+            *v7_stars(lines),
+            *v7_shrunk(v1_group(lines, 'glow')),
+            f'<rect y="{f(V7_GROUND)}" width="{V7_W}" height="{f(V7_H - V7_GROUND)}" fill="{CORAL}"/>',
+            f'<g transform="translate({f(V7_PX)} {f(V7_GROUND)}) scale({f(V7_SCALE)} {f(V7_REFLECTION)}) '
+            f'translate({f(-PX)} {-V1_GROUND})">', *v1_group(lines, 'reflection'), '</g>',
+            f'<g transform="translate({f(V7_PX)} {f(V7_INSPECT_Y)}) scale({f(V7_SCALE)})">', *camera(), '</g>',
+            *v7_shrunk(arm),
+            *v7_conveyor(),
+            '</svg>']
+
+
+def v7_steps(y):
+    """작동 과정. 세 단계를 나란히: 번호와 이름, 그 아래 한 줄 설명. 단계 사이는 가는 화살표로 잇는다."""
+    steps, gutter = TEXT['steps'], 12
+    width = (V7_W - 80 - 2 * gutter) / 3
+    badge = y + 16                                 # 번호 원의 가운데 높이
+    out = ['<g id="steps">', text(40, y, '작동 과정', 8, 700, INK_SOFT)]
+    for i, (name, desc) in enumerate(steps):
+        x = 40 + i * (width + gutter)
+        out += [circle(NAVY, (0, 0), x + 6.5, badge, 6.5),
+                text(x + 6.5, badge + 3.2, str(i + 1), 9, 700, CORAL, 'middle'),
+                text(x + 17, badge + 4.2, name, 12, 700),
+                text(x, y + 36, desc, 9, 500)]           # 단계 사이가 25쯤 비어 한 줄로 이어 읽히지 않게
+        if i < len(steps) - 1:
+            x0, x1 = x + 48, x + width + gutter - 4
+            out += [f'<path d="M{f(x0)} {f(badge)}H{f(x1 - 3)}" stroke="{INK_SOFT}" stroke-width=".5"/>',
+                    f'<path d="M{f(x1)} {f(badge)}L{f(x1 - 3.5)} {f(badge - 1.8)}V{f(badge + 1.8)}Z" '
+                    f'fill="{INK_SOFT}"/>']
+    out.append('</g>')
+    return out
+
+
+def v7_system(y):
+    """시스템 구성. 웹 HMI ↔ 서버 ↔ 장치 네 가지. 상자는 선으로만 그어 산호 바닥을 덮지 않는다."""
+    s = TEXT['system']
+    top, h = y + 7, 32
+    mid = top + h / 2
+
+    def box(x, w):
+        return (f'<rect x="{f(x)}" y="{f(top)}" width="{f(w)}" height="{h}" rx="3.5" fill="none" '
+                f'stroke="{NAVY}" stroke-width=".7"/>')
+
+    def label(cx, name, note, size=10.5):
+        return [text(cx, top + 14.2, name, size, 700, NAVY, 'middle'),
+                text(cx, top + 25.5, note, 7.5, 500, INK_SOFT, 'middle')]
+
+    def arrow(x0, x1):                             # 양쪽 화살표
+        head = lambda x, d: f'<path d="M{f(x)} {f(mid)}L{f(x - 4 * d)} {f(mid - 2.2)}V{f(mid + 2.2)}Z" fill="{NAVY}"/>'
+        return [f'<path d="M{f(x0 + 2)} {f(mid)}H{f(x1 - 2)}" stroke="{NAVY}" stroke-width=".7"/>',
+                head(x1 - 2, 1), head(x0 + 2, -1)]
+
+    devices_x, devices_w = 312, V7_W - 40 - 312
+    cell = devices_w / len(s['devices'])
+    out = ['<g id="system">', text(40, y, '시스템 구성', 7.5, 700, INK_SOFT),
+           box(40, 92), *label(86, *s['hmi']),
+           *arrow(132, 188), text(160, mid + 10, s['link'], 7.5, 500, INK_SOFT, 'middle'),
+           box(188, 92), *label(234, *s['server']),
+           *arrow(280, devices_x),
+           box(devices_x, devices_w)]
+    for i, (name, note) in enumerate(s['devices']):
+        x = devices_x + cell * i
+        if i:
+            out.append(f'<path d="M{f(x)} {f(top + 6)}V{f(top + h - 6)}" stroke="{INK_SOFT}" stroke-width=".4"/>')
+        out += label(x + cell / 2, name, note, 10)
+    out.append('</g>')
+    return out
+
+
+def v7_content(lines, title):
+    """글자와 도표. viewBox를 안전 여백 안쪽으로 잡아, 좌표는 포스터 단위 그대로 쓰면서 넘침 검사가 여백을 재게 한다."""
+    t = TEXT
+    top, side = V7_SAFE
+    right = V7_W - 40                              # 오른쪽 맞춤 글자의 끝. 1안처럼 여백 40
+    out = [f'<svg viewBox="{side} {top} {V7_W - 2 * side} {V7_H - 2 * top}" font-family="{FONT}">',
+           *v1_group(lines, 'authority-mark'),
+           text(110, 74, t['school'], 20, 700, WHITE),
+           text(right, 74, t['program'], 13.5, 500, WHITE, 'end')]
+    for i, line in enumerate(title):
+        out.append(text(38, V7_TITLE + 64 * i, line, 54, 600, NAVY, spacing=-1.2))
+    out.append(text(40, V7_TITLE + 64 + 43, t['description'], 17, 500, NAVY))
+    out += v7_steps(V7_STEPS) + v7_system(V7_SYSTEM)
+    out.append(text(40, V7_FOOTER, t['department'], 13, 500, NAVY))
+    out += [text(right - 62 * i, V7_FOOTER, name, 15, 500, NAVY, 'end')
+            for i, name in enumerate(reversed(t['members']))]
+    out.append('</svg>')
+    return out
+
+
+def v7_html(title=TEXT['title']):
+    lines = (HERE / 'v1' / 'poster.svg').read_text(encoding='utf-8').split('\n')
+    top, side = V7_SAFE
+    return '\n'.join([
+        '<!doctype html>',
+        '<html lang="ko">',
+        '<meta charset="utf-8">',
+        f'<title>{escape(" ".join(title))} — {TEXT["school"]} {TEXT["department"]}</title>',
+        '<style>',
+        f'@page {{ size: {V7_W}mm {V7_H}mm; margin: 0 }}',
+        'html, body { margin: 0 }',
+        f'.page {{ position: relative; width: {V7_W}mm; height: {V7_H}mm; overflow: hidden }}',
+        '.page > svg, .poster { position: absolute; inset: 0; width: 100%; height: 100% }',
+        f'.poster {{ box-sizing: border-box; padding: {top}mm {side}mm }}',
+        '.poster > svg { display: block; width: 100%; height: 100%; overflow: visible }',
+        '</style>',
+        '<div class="page">',
+        *v7_art(lines),
+        '<div class="poster">',
+        *v7_content(lines, title),
+        '</div>',
+        '</div>',
+    ]) + '\n'
+
+
 def build(name):
     return restored_v1() if name == 'v6' else poster_svg(LAYOUTS[name])
 
@@ -525,33 +737,49 @@ def browser():
 
 
 def render(svg, out):
+    shoot('<!doctype html><meta charset="utf-8"><style>@page{size:594mm 841mm;margin:0}'
+          'html,body{margin:0}svg{display:block;width:594mm;height:841mm}</style>' + svg,
+          '<!doctype html><meta charset="utf-8"><style>html,body{margin:0;overflow:hidden}'
+          'svg{display:block;width:100vw;height:100vh}</style>' + svg,
+          out)
+
+
+def render_html(html, out, width, height):
+    """7안처럼 종이 크기(width x height mm)로 짠 HTML. 미리보기는 다른 안과 같은 폭(1188)에 맞게 줄여 찍는다."""
+    zoom = 1188 / (width / 25.4 * 96)
+    shoot(html, html.replace('</style>', f'html {{ zoom: {zoom:.5f}; overflow: hidden }}\n</style>', 1), out,
+          (1188, round(1188 * height / width)))
+
+
+def shoot(print_html, shot_html, out, window=(1188, 1682)):
     exe = browser()
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         page = tmp / 'print.html'
-        page.write_text(
-            '<!doctype html><meta charset="utf-8"><style>@page{size:594mm 841mm;margin:0}'
-            'html,body{margin:0}svg{display:block;width:594mm;height:841mm}</style>' + svg,
-            encoding='utf-8')
+        page.write_text(print_html, encoding='utf-8')
         shot = tmp / 'shot.html'
-        shot.write_text(
-            '<!doctype html><meta charset="utf-8"><style>html,body{margin:0;overflow:hidden}'
-            'svg{display:block;width:100vw;height:100vh}</style>' + svg,
-            encoding='utf-8')
+        shot.write_text(shot_html, encoding='utf-8')
         common = [exe, '--headless=new', '--disable-gpu', '--hide-scrollbars', f'--user-data-dir={tmp / "profile"}']
         subprocess.run(common + [f'--print-to-pdf={out / "poster.pdf"}', '--no-pdf-header-footer',
                                  page.as_uri()], check=True, capture_output=True)
-        subprocess.run(common + [f'--screenshot={out / "poster.png"}', '--window-size=1188,1682',
+        subprocess.run(common + [f'--screenshot={out / "poster.png"}', '--window-size=%d,%d' % window,
                                  shot.as_uri()], check=True, capture_output=True)
 
 
 def main():
-    names = [*LAYOUTS, 'v6']
+    names = [*LAYOUTS, 'v6', *V7_TITLES]
     name = sys.argv[1] if len(sys.argv) > 1 else LATEST
     if name not in names:
         raise SystemExit(f'안 이름은 {", ".join(names)} 중 하나입니다.')
     out = HERE / name if len(sys.argv) > 1 else HERE
     out.mkdir(exist_ok=True)
+    if name in V7_TITLES:                          # 7안 틀로 만드는 안은 HTML이 원본이다
+        html = v7_html(V7_TITLES[name])
+        (out / 'poster.html').write_text(html, encoding='utf-8')
+        if '--html' not in sys.argv:
+            render_html(html, out, V7_W, V7_H)
+        print(f'{name}: {out.relative_to(HERE.parent).as_posix()}/poster.html, poster.pdf, poster.png')
+        return
     svg = build(name)
     (out / 'poster.svg').write_text(svg, encoding='utf-8')
     render(svg, out)
