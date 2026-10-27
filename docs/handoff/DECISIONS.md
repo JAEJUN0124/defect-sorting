@@ -107,3 +107,9 @@ handoff_spec: 1
 - 결정: 컨베이어 벨트 신호는 항상 켜짐으로 둔다. 컨베이어 쪽 일이 늦어져, 그동안 다른 일을 먼저 진행하기 위해서다.
 - 근거: 사용자 2026-10-19 · HISTORY/2026-10-19-conveyor-always-on-decision.md
 - 관련 문서: hmi-web-mockup/README.md
+
+## D-022 포스터는 8안을 최종으로 쓴다
+- 범위: 프로젝트 포스터(`poster/`)
+- 결정: 제출·인쇄에는 8안(`poster/v8/poster.pdf`)을 쓴다. 종이는 제출 규격 595 × 835 mm다.
+- 근거: 사용자 2026-10-27 · HISTORY/2026-10-27-poster-final-decision.md
+- 관련 문서: poster/README.md
