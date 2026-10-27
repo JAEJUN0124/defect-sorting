@@ -16,7 +16,7 @@
     {
       "name": "hmi-web-mockup-lan",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["hmi-web-mockup/tools/dev-server.py", "8080", "--host", "0.0.0.0", "--server", "http://10.108.108.98:5080"],
+      "runtimeArgs": ["hmi-web-mockup/tools/dev-server.py", "8080", "--host", "0.0.0.0", "--server", "http://192.168.219.101:8000"],
       "port": 8080
     },
     {

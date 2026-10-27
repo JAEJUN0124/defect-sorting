@@ -29,7 +29,7 @@ Cloudflare Tunnel  defect-hmi
         ▼
 cloudflared (장비망 안 PC, 밖으로 나가는 연결만 씀)
         ▼
-메인 서버  http://10.108.108.98:5080/ws/hmi  (그대로)
+메인 서버  http://192.168.219.101:8000/ws/hmi  (그대로)
 ```
 
 - 빌드한 화면은 자기를 내준 주소의 `/ws/hmi`에 붙습니다 (`react/src/server-defaults.js`). 그래서 `wss://hmi.hypefree.net/ws/hmi`로 붙고, 연결 코드는 바꾸지 않았습니다.
@@ -49,8 +49,8 @@ cloudflared (장비망 안 PC, 밖으로 나가는 연결만 씀)
 
 1. **도메인**: Cloudflare의 Domains 목록에 `hypefree.net`이 Active여야 합니다. `hmi`·`hmi-origin` DNS 레코드는 직접 만들지 않습니다 (터널 route와 Worker 배포가 만듦. `hmi`에 CNAME이 있으면 Worker 연결이 실패).
 2. **Zero Trust**: 팀 이름 → Free 플랜 → 결제 정보. 일회용 코드 로그인은 Zero Trust → Integrations → Identity providers → Add new identity provider → One-time PIN으로 더합니다 (처음에는 없음).
-3. **장비망 PC 확인** (cloudflared를 돌릴 PC의 PowerShell): `Test-NetConnection region1.v2.argotunnel.com -Port 7844`와 `region2…`가 `True`, `Test-NetConnection 10.108.108.98 -Port 5080`이 `True`. 절전은 "안 함".
-4. **터널**: Networking → Tunnels → Create a tunnel(`defect-hmi`) → Windows → 대시보드의 설치 파일과 `cloudflared.exe service install <토큰>`(관리자 권한) → Healthy 확인 → Routes → Add route → Published application: Subdomain `hmi-origin`, Domain `hypefree.net`, Service URL `http://10.108.108.98:5080` (서버 PC에서 돌려도 이 주소 — 서버가 이 주소에만 붙어 있음). 토큰은 어디에도 올리지 않습니다.
+3. **장비망 PC 확인** (cloudflared를 돌릴 PC의 PowerShell): `Test-NetConnection region1.v2.argotunnel.com -Port 7844`와 `region2…`가 `True`, `Test-NetConnection 192.168.219.101 -Port 8000`이 `True`. 절전은 "안 함".
+4. **터널**: Networking → Tunnels → Create a tunnel(`defect-hmi`) → Windows → 대시보드의 설치 파일과 `cloudflared.exe service install <토큰>`(관리자 권한) → Healthy 확인 → Routes → Add route → Published application: Subdomain `hmi-origin`, Domain `hypefree.net`, Service URL `http://192.168.219.101:8000` (서버 PC에서 돌려도 이 주소 — 서버가 이 주소에만 붙어 있음). 토큰은 어디에도 올리지 않습니다.
 5. **서비스 토큰**: Zero Trust → Access controls → Service credentials → Service Tokens → Create Service Token(`defect-hmi-worker`, 1년). Client ID는 `….access`로 끝나고, Client Secret은 이때 한 번만 보입니다 (길이·형식은 Cloudflare가 정함 — 2026-10에 받은 값은 54글자). 잃어버리면 그 토큰의 ⋯ → Rotate secret으로 새로 받습니다 (Client ID와 정책은 그대로). 터널 설치 토큰(`eyJ…`)과 다른 값입니다.
 6. **Access 앱** (첫 배포 전에): Access controls → Applications → Create new application → Self-hosted and private → Add public hostname. Worker 방식(`+ Workers 추가`, Worker 설정의 Access 켜기)은 웹소켓을 403으로 막으니 쓰지 않습니다.
    터널 주소 앱은 계속 둡니다. 화면 주소 앱은 2026-10-27에 로그인으로 바꾸며 지웁니다 — 순서는 아래 "로그인으로 바꾸기"에 있습니다. 아래 표의 화면 주소 칸은 지우기 전 설정입니다.
@@ -142,8 +142,8 @@ npm --prefix hmi-web-mockup/cloudflare run dev
 | `/ws/hmi`가 101 | 정상 (웹소켓이 서버까지 붙음) |
 | `/ws/hmi`가 500 | 서비스 토큰을 안 넣음 → `set-token.py` |
 | `/ws/hmi`가 401 | 터널 주소의 Access가 토큰을 거절 — 값이 틀림(글자 그대로·터널 토큰·다른 토큰) → `set-token.py`, 또는 `hmi-origin` 정책이 Service Auth · `defect-hmi-worker`가 아님 |
-| `/ws/hmi`가 502 | 토큰은 통과, 터널 너머 서버가 답하지 않음 — 서버가 꺼짐·주소가 바뀜. cloudflared를 돌리는 PC에서 `Test-NetConnection 10.108.108.98 -Port 5080` |
-| 서버가 웹소켓을 400으로 거절 | 터널 route의 Additional application settings → HTTP Settings → HTTP Host Header를 `10.108.108.98:5080`으로 |
+| `/ws/hmi`가 502 | 토큰은 통과, 터널 너머 서버가 답하지 않음 — 서버가 꺼짐·주소가 바뀜. cloudflared를 돌리는 PC에서 `Test-NetConnection 192.168.219.101 -Port 8000` |
+| 서버가 웹소켓을 400으로 거절 | 터널 route의 Additional application settings → HTTP Settings → HTTP Host Header를 `192.168.219.101:8000`으로 |
 | 카메라가 "영상 상태 확인 불가" | `/video/status`의 답 코드 — 401·500·502는 `/ws/hmi`와 같은 원인, 404는 서버가 영상 경로를 내주지 않음(영상 기능이 없는 서버 판), 405는 GET·HEAD가 아닌 요청 |
 | Worker 배포가 사용자 지정 도메인에서 실패 | `hmi.hypefree.net`에 이미 DNS 레코드(CNAME)가 있음 → 지우고 다시 배포 |
 | 이메일 확인(Access) 화면이 뜸 | 화면 주소의 Access 앱이 아직 있음 → "로그인으로 바꾸기" 4번 |
@@ -155,7 +155,7 @@ npm --prefix hmi-web-mockup/cloudflare run dev
 
 ## 제한
 
-- cloudflared를 돌리는 PC가 꺼지면 화면은 뜨지만 서버 끊김으로 나옵니다. 인터넷이 끊기면 밖에서 열 수 없습니다 — 장비망 안에서는 HMI 담당 PC의 개발용 서버로 엽니다 (`tools/dev-server.py 8080 --host 0.0.0.0 --server http://10.108.108.98:5080`, 주소 `?mock=0&ws=auto` — 카메라까지 같은 주소로 이어짐. [HMI README](../hmi-web-mockup/README.md#실행)).
+- cloudflared를 돌리는 PC가 꺼지면 화면은 뜨지만 서버 끊김으로 나옵니다. 인터넷이 끊기면 밖에서 열 수 없습니다 — 장비망 안에서는 HMI 담당 PC의 개발용 서버로 엽니다 (`tools/dev-server.py 8080 --host 0.0.0.0 --server http://192.168.219.101:8000`, 주소 `?mock=0&ws=auto` — 카메라까지 같은 주소로 이어짐. [HMI README](../hmi-web-mockup/README.md#실행)).
 - 화면 긴급정지가 인터넷을 한 번 더 거칩니다. 화면 긴급정지는 원래도 서버를 거쳐 믿을 수 없는 것으로 두고, 서버가 끊기면 DC 전원 분리를 안내합니다.
 - 원점: `https://hmi.hypefree.net`은 Worker(KV) 한 곳에 두어 이 주소로 연 HMI가 모두 같은 원점을 쓰고, 다른 주소(8080 등, 장비망 안)로 연 HMI는 지금처럼 브라우저마다 따로입니다 (D-014). KV는 바뀐 값이 다른 Cloudflare 위치에 늦게 닿을 수 있어, 원점을 바꾼 직후 다른 곳의 원점 복귀가 한 번 거절될 수 있습니다.
 - 화면 주소가 공개라, 주소를 아는 사람은 누구나 시작·정지·긴급정지 등을 보내고 카메라 영상을 봅니다 (사용자 2026-10-27의 결정). 로그인으로 막는 것은 원점 값뿐입니다.

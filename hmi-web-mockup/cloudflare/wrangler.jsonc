@@ -11,7 +11,7 @@
   "preview_urls": false,
   "routes": [{ "pattern": "hmi.hypefree.net", "custom_domain": true }],
   "assets": { "directory": "./site", "binding": "ASSETS" },
-  // 터널 주소 (Cloudflare Tunnel → 장비망 안 cloudflared → 메인 서버 http://10.108.108.98:5080)
+  // 터널 주소 (Cloudflare Tunnel → 장비망 안 cloudflared → 메인 서버 http://192.168.219.101:8000)
   "vars": { "ORIGIN": "https://hmi-origin.hypefree.net" },
   // 원점 (사용자 2026-10-27): 밖 주소로 연 HMI가 모두 같은 원점을 쓴다. id를 비워 두면 첫 배포 때 wrangler가 KV를 만들어 붙인다
   "kv_namespaces": [{ "binding": "HOME" }],

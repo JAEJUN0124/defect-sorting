@@ -30,14 +30,14 @@ const auto = (src) => src.replace(/wsUrl:\s*'[^']*'/, "wsUrl: 'auto'");
 
 test("config.js: wsUrl 'auto'면 화면을 내준 서버의 /ws/hmi (http는 ws, https는 wss), 파일로 열면 localhost", () => {
   const src = auto(fs.readFileSync(CONFIG, 'utf8'));
-  assert.equal(loadConfig('http://10.108.108.98:5080/', src).wsUrl, 'ws://10.108.108.98:5080/ws/hmi');
+  assert.equal(loadConfig('http://192.168.219.101:8000/', src).wsUrl, 'ws://192.168.219.101:8000/ws/hmi');
   assert.equal(loadConfig('https://hmi.example:8443/tools/server-check.html', src).wsUrl, 'wss://hmi.example:8443/ws/hmi');
   assert.equal(loadConfig('file:///C:/hmi/index.html', src).wsUrl, 'ws://localhost:5080/ws/hmi');
 });
 
 test('config.js: 주소 뒤 ?ws=auto도 같고, ?ws=주소는 그 주소를 쓴다 (기본 설정)', () => {
   assert.equal(loadConfig('http://10.108.108.216:8080/?mock=0&ws=auto').wsUrl, 'ws://10.108.108.216:8080/ws/hmi');
-  assert.equal(loadConfig('http://localhost:5173/?mock=0&ws=ws://10.108.108.98:5080/ws/hmi').wsUrl, 'ws://10.108.108.98:5080/ws/hmi');
+  assert.equal(loadConfig('http://localhost:5173/?mock=0&ws=ws://192.168.219.101:8000/ws/hmi').wsUrl, 'ws://192.168.219.101:8000/ws/hmi');
   const plain = loadConfig('http://localhost:5173/');
   assert.equal(plain.wsUrl, 'ws://localhost:5080/ws/hmi');
   assert.equal(plain.useMock, true); // 기본은 브라우저 안 가짜 서버
@@ -75,9 +75,9 @@ test('make-server-bundle.py: wwwroot/에 React 조작 화면과 점검 페이지
   ['tools/server-check.html', 'tools/server-check.js', 'tools/devices.html', 'js/config.js', 'js/xml.js', 'css/base.css'].forEach((f) => assert.ok(names.includes('wwwroot/' + f), f));
   ['tools/dev-server.py', 'tools/make-server-bundle.py'].forEach((f) => assert.ok(!names.includes('wwwroot/' + f), f));
   assert.ok(!names.some((n) => n.startsWith('wwwroot/tests/') || n.startsWith('wwwroot/react/')));
-  const cfg = loadConfig('http://10.108.108.98:5080/', config);
+  const cfg = loadConfig('http://192.168.219.101:8000/', config);
   assert.equal(cfg.useMock, false);
-  assert.equal(cfg.wsUrl, 'ws://10.108.108.98:5080/ws/hmi');
+  assert.equal(cfg.wsUrl, 'ws://192.168.219.101:8000/ws/hmi');
 });
 
 // 위 시험이 react/dist를 새로 빌드한 뒤에 돈다 (같은 파일 안의 시험은 차례로 돈다)

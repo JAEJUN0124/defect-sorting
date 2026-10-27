@@ -56,7 +56,7 @@ Windows 방화벽이 Python의 접속을 막으면 허용해야 합니다. 인�
 `--server` 중계는 시험용 XML 서버로만 확인. Claude 앱 안의 브라우저는 이 PC의 장비망 주소에서 서버로 나가는 접속을 막아 확인에 쓸 수 없음)
 
 ```bash
-python hmi-web-mockup/tools/dev-server.py 8080 --host 0.0.0.0 --server http://10.108.108.98:5080
+python hmi-web-mockup/tools/dev-server.py 8080 --host 0.0.0.0 --server http://192.168.219.101:8000
 ```
 
 ### 메인 서버에 올리기

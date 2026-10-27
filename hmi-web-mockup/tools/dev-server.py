@@ -104,7 +104,7 @@ def main():
     p = argparse.ArgumentParser(description="개발용 정적 서버 (캐시 끔)")
     p.add_argument("port", nargs="?", type=int, default=5173)
     p.add_argument("--host", default="127.0.0.1", help="기본은 이 PC에서만. 0.0.0.0이면 다른 PC에서도 접속")
-    p.add_argument("--server", help="메인 서버 주소 (예: http://10.108.108.98:5080). /ws/hmi와 /video/…를 그 서버로 잇는다")
+    p.add_argument("--server", help="메인 서버 주소 (예: http://192.168.219.101:8000). /ws/hmi와 /video/…를 그 서버로 잇는다")
     args = p.parse_args()
     handler = functools.partial(NoCacheHandler, directory=ROOT)
     with http.server.ThreadingHTTPServer((args.host, args.port), handler) as server:

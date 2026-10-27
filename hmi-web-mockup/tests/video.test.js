@@ -12,9 +12,9 @@ const cam = (id, available, receivedAt) => ({ id, available, receivedAt, sourceT
 
 test('urls: 웹소켓 서버의 호스트·포트로 (ws → http, wss → https) — HMI 화면의 주소가 아니라', () => {
   const cfg = (wsUrl) => ({ wsUrl, cameras: { bridge: { statusPath: '/video/status', streams: { top: { id: 1, path: '/video/1.mjpg' }, close: { id: 2, path: '/video/2.mjpg' } } } } });
-  const lan = V.urls(cfg('ws://10.108.108.98:5080/ws/hmi'));
-  assert.equal(lan.status, 'http://10.108.108.98:5080/video/status');
-  assert.deepEqual(lan.streams, { top: { id: 1, url: 'http://10.108.108.98:5080/video/1.mjpg' }, close: { id: 2, url: 'http://10.108.108.98:5080/video/2.mjpg' } });
+  const lan = V.urls(cfg('ws://192.168.219.101:8000/ws/hmi'));
+  assert.equal(lan.status, 'http://192.168.219.101:8000/video/status');
+  assert.deepEqual(lan.streams, { top: { id: 1, url: 'http://192.168.219.101:8000/video/1.mjpg' }, close: { id: 2, url: 'http://192.168.219.101:8000/video/2.mjpg' } });
   const outside = V.urls(cfg('wss://hmi.hypefree.net/ws/hmi'));
   assert.equal(outside.status, 'https://hmi.hypefree.net/video/status');
   assert.equal(outside.streams.close.url, 'https://hmi.hypefree.net/video/2.mjpg');

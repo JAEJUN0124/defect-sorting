@@ -18,7 +18,7 @@ HMI와 서버는 웹소켓 하나로 XML을 주고받습니다 (D-002). 기준�
 
 | 항목 | 값 |
 |---|---|
-| 주소 | `config.js`의 `wsUrl`. 기본 `ws://localhost:5080/ws/hmi`. 서버 기본은 `ws://127.0.0.1:5080/ws/hmi`로 같은 PC에서만 붙습니다. 다른 PC면 `ws://서버내부IP:5080/ws/hmi`, 포트포워딩한 외부면 `ws://공인IP:외부포트/ws/hmi`. 받은 내부 주소는 `ws://10.108.108.98:5080/ws/hmi` (사용자 2026-10-16). `'auto'`(주소 뒤 `?ws=auto`)면 화면을 내준 서버의 `/ws/hmi` — HMI를 메인 서버에 올렸을 때 (`tools/make-server-bundle.py`, 서버 답장 0.1) |
+| 주소 | `config.js`의 `wsUrl`. 기본 `ws://localhost:5080/ws/hmi`. 서버 기본은 `ws://127.0.0.1:5080/ws/hmi`로 같은 PC에서만 붙습니다. 다른 PC면 `ws://서버내부IP:5080/ws/hmi`, 포트포워딩한 외부면 `ws://공인IP:외부포트/ws/hmi`. 받은 내부 주소는 `ws://192.168.219.101:8000/ws/hmi` (사용자 2026-10-16). `'auto'`(주소 뒤 `?ws=auto`)면 화면을 내준 서버의 `/ws/hmi` — HMI를 메인 서버에 올렸을 때 (`tools/make-server-bundle.py`, 서버 답장 0.1) |
 | 형식 | `config.js`의 `server.format: 'xml'` (기본). `'json'`이면 예전 초안 |
 | 시험 주소 | 설정 파일을 고치지 않고 조작 화면 주소 뒤에 `?mock=0&ws=ws://서버IP:5080/ws/hmi` (예: `http://localhost:5174/?mock=0&ws=…`) |
 | 상태 받기 | 서버가 상태를 보내는 간격은 서버 설정(`PushIntervalMs`)이라 바뀔 수 있음 (2026-10-16에 1초 → 60초, 앞으로도 바꿀 수 있음 — 사용자). 화면 값은 그 간격대로 바뀜. 상태가 60초(`server.xml.statusPollMs`) 넘게 오지 않을 때만 HMI가 `GetStatus`로 물음. 원점 잡기 때 각도가 3초보다 오래됐으면 그때 한 번 물음 |
@@ -309,7 +309,7 @@ HMI는 `/ws/hmi`로 영상 명령을 보내지 않고, 설비가 영상을 올�
 | `/video/2.mjpg` | MJPEG | `close` 그리퍼 (서버 id 2) |
 | `/video/status` | JSON `{ connected, freshnessMs, cameras: [{ id, available, receivedAt, sourceTimestampMs, sequence }] }` | 두 카메라의 영상 상태 |
 
-- 주소: 붙은 웹소켓 주소의 호스트·포트를 그대로 쓰고 `ws`→`http`, `wss`→`https`로 바꿉니다 (HMI 화면의 주소가 아니라, 안내 2장). 예: `ws://10.108.108.98:5080/ws/hmi` → `http://10.108.108.98:5080/video/1.mjpg`.
+- 주소: 붙은 웹소켓 주소의 호스트·포트를 그대로 쓰고 `ws`→`http`, `wss`→`https`로 바꿉니다 (HMI 화면의 주소가 아니라, 안내 2장). 예: `ws://192.168.219.101:8000/ws/hmi` → `http://192.168.219.101:8000/video/1.mjpg`.
 - 설정: `config.js`의 `cameras.bridge` (`statusPath`, `pollMs` 1000, `timeoutMs` 3000, `streams` — 카메라 이름 → 서버 id·경로). XML 연결일 때만 씁니다. `null`이면 예전 방식(`Status`의 `Camera`와 카메라 명령)으로 돌아갑니다.
 - 화면: 카메라 화면 하나에 탑뷰·그리퍼 바꾸기 버튼 (사용자 2026-10-17). "카메라 연결"을 누르면 그때부터 상태를 묻고, 고른 카메라의 영상 하나만 엽니다. 바꾸면 앞 영상을 닫고 새로 엽니다. "카메라 끄기"는 영상 연결을 닫고 묻기를 멈출 뿐 설비 카메라는 그대로입니다 (안내 7장 3).
 - 상태 묻기: 앞 조회가 끝난 뒤 1초 뒤에 다음을 묻습니다(겹치지 않음). 제한 시간 3초, 캐시하지 않음(`cache: 'no-store'`). 브라우저 탭이 숨어 있으면 묻지 않고 쉽니다. 카메라는 배열 순서가 아니라 `id`로 찾습니다.
@@ -329,6 +329,6 @@ HMI는 `/ws/hmi`로 영상 명령을 보내지 않고, 설비가 영상을 올�
 - 영상과 XML 연결은 따로입니다 (안내 5장). 영상이 끊겨도 `/ws/hmi`를 다시 붙지 않고, 서버 연결이 끊겨도 영상은 계속 볼 수 있습니다. 카메라 하나가 끊겨도 다른 카메라는 그대로입니다.
 - 브라우저 출처 (안내 8장): 서버에 CORS 설정이 없어, 상태 JSON은 **HMI 화면과 같은 주소**에서 읽어야 합니다 (다른 주소면 브라우저가 막아 "영상 상태 확인 불가"로 남고 영상을 열지 않음). 그래서 HMI는 늘 화면을 내준 곳에 붙는 배치로 씁니다.
   - 밖에서: Cloudflare Worker가 `/ws/hmi`와 함께 `/video/status`·`/video/1.mjpg`·`/video/2.mjpg`도 터널로 넘깁니다 ([cloudflare.md](cloudflare.md)).
-  - 장비망 안 다른 PC: HMI 담당 PC에서 `python hmi-web-mockup/tools/dev-server.py 8080 --host 0.0.0.0 --server http://10.108.108.98:5080`, 다른 PC는 `http://<그 PC 주소>:8080/?mock=0&ws=auto`. 개발용 서버가 `/ws/hmi`와 `/video/…`를 메인 서버로 그대로 잇습니다. 주소 뒤에 `ws=ws://10.108.108.98:5080/ws/hmi`처럼 서버 주소를 직접 주면 XML은 되지만 영상 상태는 막힙니다.
+  - 장비망 안 다른 PC: HMI 담당 PC에서 `python hmi-web-mockup/tools/dev-server.py 8080 --host 0.0.0.0 --server http://192.168.219.101:8000`, 다른 PC는 `http://<그 PC 주소>:8080/?mock=0&ws=auto`. 개발용 서버가 `/ws/hmi`와 `/video/…`를 메인 서버로 그대로 잇습니다. 주소 뒤에 `ws=ws://192.168.219.101:8000/ws/hmi`처럼 서버 주소를 직접 주면 XML은 되지만 영상 상태는 막힙니다.
   - 메인 서버가 HMI 화면을 내주면(`wsUrl: 'auto'`) 원래 같은 주소입니다.
 - 확인한 범위: 시험용 서버(`xml-server.py --video`)의 시험 화면으로 연결·바꾸기·업로드 멈춤·업로드 연결 끊김·복구·상태 확인 불가·좁은 화면(360px)을 브라우저로 확인했습니다 (2026-10-17). 실제 설비 영상, 실제 해상도·FPS의 지연과 부하(안내 9장 7), 여러 HMI 동시 표시는 아직입니다.
