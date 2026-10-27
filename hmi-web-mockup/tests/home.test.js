@@ -55,3 +55,64 @@ test('저장소가 막힌 브라우저: 이 창에서만 기억하고 그렇다�
   assert.equal(H.persisted(), false);
   assert.deepEqual(H.read(), saved);
 });
+
+// 밖 주소(Cloudflare Worker): 원점을 Worker 한 곳에 둔다 (사용자 2026-10-27). fetch를 흉내 낸다
+function fakeWorker(t, answer) {
+  const calls = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : undefined, headers: init.headers || {} });
+    const r = await answer(init.method || 'GET', init.body ? JSON.parse(init.body) : undefined);
+    if (r instanceof Error) throw r;
+    return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.body };
+  };
+  t.after(() => { globalThis.fetch = real; });
+  return calls;
+}
+
+test('Worker에 둘 때: 읽어 오기 전에는 없고 이 브라우저에 저장한 원점은 쓰지 않으며, 다시 읽어 바뀌면 알린다', async (t) => {
+  const ls = memoryStorage();
+  const H = fresh(ls);
+  H.save({ angles: POSE, source: 'arm' }); // 예전에 이 브라우저에 저장한 원점
+  let stored = { angles: Object.assign({}, POSE, { gripper: 40 }), units: { gripper: 'pct' }, setAt: '2026-10-27T01:00:00.000Z', source: 'leader' };
+  const calls = fakeWorker(t, () => ({ status: 200, body: { home: stored } }));
+  const seen = [];
+  H.subscribe((h) => seen.push(h && h.angles.gripper));
+  H.useRemote('/home');
+  assert.equal(H.remote(), true);
+  assert.equal(H.read(), null);
+  const h = await H.refresh();
+  assert.equal(h.angles.gripper, 40);
+  assert.deepEqual(H.read(), h);
+  await H.refresh(); // 같으면 알리지 않는다
+  stored = null; // 다른 곳에서 지움
+  assert.equal(await H.refresh(), null);
+  assert.deepEqual(seen, [null, 40, null]);
+  assert.deepEqual(calls.map((c) => c.url + ' ' + c.method), ['/home GET', '/home GET', '/home GET']);
+});
+
+test('Worker에 둘 때: 저장은 PUT(JSON)이고 Worker의 저장 시각을 쓴다. 401 → LOGIN_REQUIRED, 400 → HOME_INVALID, 닿지 않음 → HOME_SAVE_FAILED', async (t) => {
+  const H = fresh(memoryStorage());
+  let status = 200;
+  const calls = fakeWorker(t, (method, body) => {
+    if (status === 'down') return new Error('offline');
+    return { status, body: status === 200 ? { home: Object.assign({}, body.home, { setAt: '2026-10-27T02:00:00.000Z' }) } : { error: 'x' } };
+  });
+  H.useRemote('/home');
+  const saved = await H.save({ angles: POSE, units: { gripper: 'pct' }, source: 'leader' });
+  assert.equal(saved.setAt, '2026-10-27T02:00:00.000Z');
+  assert.deepEqual(H.read(), saved);
+  assert.equal(H.persisted(), true);
+  assert.equal(calls[0].method, 'PUT');
+  assert.equal(calls[0].headers['Content-Type'], 'application/json');
+  assert.deepEqual(calls[0].body.home.angles, POSE);
+  for (const [s, code] of [[401, 'LOGIN_REQUIRED'], [400, 'HOME_INVALID'], [500, 'HOME_SAVE_FAILED'], ['down', 'HOME_SAVE_FAILED']]) {
+    status = s;
+    await assert.rejects(H.save({ angles: POSE }), (err) => err.code === code, String(s));
+  }
+  assert.deepEqual(H.read(), saved); // 실패한 저장은 원점을 바꾸지 않는다
+  assert.equal(H.save({ angles: Object.assign({}, POSE, { gripper: null }) }), null); // 여섯 관절이 없으면 보내지도 않음
+  status = 'down';
+  await assert.rejects(H.refresh(), (err) => err.code === 'HOME_LOAD_FAILED');
+  assert.deepEqual(H.read(), saved);
+});

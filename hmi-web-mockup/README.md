@@ -75,7 +75,8 @@ python hmi-web-mockup/tools/make-server-bundle.py hmi-main-server.zip
 
 ### 밖에서 열기 (Cloudflare)
 
-장비망 밖에서는 `https://hmi.hypefree.net/`으로 엽니다. 화면 파일은 Cloudflare Worker가 내주고, `/ws/hmi` 웹소켓과 카메라 영상 세 경로(`/video/status`·`/video/1.mjpg`·`/video/2.mjpg`)만 Cloudflare Tunnel을 거쳐 메인 서버로 갑니다. 앞에는 Cloudflare Access(허락한 이메일만)가 있습니다. 서버 코드는 바꾸지 않습니다.
+장비망 밖에서는 `https://hmi.hypefree.net/`으로 엽니다. 화면 파일은 Cloudflare Worker가 내주고, `/ws/hmi` 웹소켓과 카메라 영상 세 경로(`/video/status`·`/video/1.mjpg`·`/video/2.mjpg`)만 Cloudflare Tunnel을 거쳐 메인 서버로 갑니다. 서버 코드는 바꾸지 않습니다.
+누구나 로그인 없이 열어 모든 기능을 씁니다. 로그인(팀 공용 비밀번호, 맨 아래 줄의 "로그인")은 **원점 잡기에만** 필요하고, 원점은 이 주소의 모든 HMI가 같이 쓰도록 Worker에 저장됩니다 (사용자 2026-10-27). 장비망 안 화면에는 로그인이 없습니다.
 구조, 대시보드 설정, 안 될 때는 [docs/cloudflare.md](../docs/cloudflare.md)에 있습니다.
 
 ```bash
@@ -84,6 +85,7 @@ npm --prefix hmi-web-mockup/cloudflare run deploy
 
 - 위 명령이 React 빌드 → `cloudflare/site/`(메인 서버 묶음의 `wwwroot/`와 같은 파일, `make-server-bundle.py --dir`) → `wrangler deploy`를 한 번에 합니다. 화면이나 `js/`를 고친 뒤에도 이것만 다시 합니다.
 - 처음 한 번은 `npm --prefix hmi-web-mockup/cloudflare install`, `hmi-web-mockup/cloudflare`에서 `npx wrangler login`(PowerShell은 `npx.cmd`), 첫 배포 뒤 `python hmi-web-mockup/cloudflare/set-token.py`로 서비스 토큰을 넣습니다 (값을 터널 주소에 먼저 시험한 뒤 Worker 비밀값으로 넣음).
+- 로그인 비밀번호는 `python hmi-web-mockup/cloudflare/set-password.py`로 넣습니다 (10글자 이상, 쿠키 서명 키도 새로 만들어 함께 넣음 — 비밀번호를 바꾸면 모두 다시 로그인).
 - 이 PC에서 시험: `cloudflare/.dev.vars.example`을 `.dev.vars`로 복사하고, 시험용 XML 서버(`xml-server`)와 `npm --prefix hmi-web-mockup/cloudflare run dev`(미리보기 설정 `hmi-cloudflare-dev`)를 띄워 `http://localhost:8787/`을 엽니다.
 
 주소 뒤에 붙이는 설정 (설정 파일보다 우선)
@@ -133,7 +135,7 @@ python hmi-web-mockup/tests/xml-server.py 5092 --simulation --extended --video -
 | F-01 | 프로젝트 시작 | 조작반의 주 버튼(라이트는 검정, 다크는 흰색). 가동 중에는 같은 키가 "정지"가 됨 |
 | F-02 | EMS / 긴급정지 | 노란 판 위 빨간 버튼. 해제는 "긴급정지 해제" → 확인 창 |
 | F-03 | 프로그램 종료 | 조작반 맨 아래. 확인 창 → HMI만 닫고 종료 화면. 서버에는 보내지 않아 라인과 장비는 그대로 (장비 정지는 정지 키·긴급정지) |
-| F-04 | 원점 복귀 · 원점 잡기 | 시작 키 아래 두 키. 원점은 **이 HMI(브라우저)가 저장**합니다 (`js/home.js`, [xml-protocol 3장](../docs/xml-protocol.md#3-원점--hmi가-저장-사용자-2026-10-14)). **원점 잡기**: 수동 모드에서(가동 중에도) 리더암으로 로봇팔을 원하는 자세에 둔 뒤 누르면 확인 창을 거쳐 그 자세를 원점으로 저장. **원점 복귀**: 자동 모드·정지 상태에서 저장된 원점 각도를 서버에 보내 이동. 다른 모드에서는 키가 잠기고, 마우스를 올리면 이유가 보임 |
+| F-04 | 원점 복귀 · 원점 잡기 | 시작 키 아래 두 키. 원점은 **이 HMI(브라우저)가 저장**합니다 (`js/home.js`, [xml-protocol 3장](../docs/xml-protocol.md#3-원점--hmi가-저장-사용자-2026-10-14)). **원점 잡기**: 수동 모드에서(가동 중에도) 리더암으로 로봇팔을 원하는 자세에 둔 뒤 누르면 확인 창을 거쳐 그 자세를 원점으로 저장. **원점 복귀**: 자동 모드·정지 상태에서 저장된 원점 각도를 서버에 보내 이동. 다른 모드에서는 키가 잠기고, 마우스를 올리면 이유가 보임. 밖 주소에서는 원점을 Worker 한 곳에 두고, 원점 잡기만 로그인해야 함 (누르면 로그인 창) |
 | F-05 | 카메라 연결 | 오른쪽 큰 화면 가운데 버튼. 연결되면 영상 + 판정 상자, 왼쪽 위 탑뷰·그리퍼 바꾸기(화면 하나, 점이 초록이면 그 카메라 영상이 옴), 오른쪽 위 "카메라 끄기". 실제 서버(XML)에서는 서버의 MJPEG를 직접 받고 `/video/status`를 1초마다 물어 끊기면 영상을 숨기고 이유를 씀 — "설비 영상 연결 대기" · "영상 미수신" · "5초 이상 새 영상 없음" · "영상 상태 확인 불가" ([xml-protocol 8장](../docs/xml-protocol.md#8-카메라-영상--서버의-http-주소에서-따로-받음-서버-안내-2026-10-17)). 카메라 끄기는 이 화면의 영상만 닫음 (이 PC의 USB 카메라는 끄기 없음) |
 | F-06 | 운전 모드 전환 | 자동 / 수동. 정지 상태에서만. 수동이면 리더암 각도 표시 |
 | 추가 | 로봇팔이 옮길 부품 | 운전 모드 아래 "양품"·"불량품" 두 키 (사용자 2026-10-17). 정지 상태에서만. 누르면 서버에 보내고(XML `SetSortTarget` — 지금 서버 v1.0은 받지 않아 그렇다고 안내), 서버가 알려 준 값이 눌린 모양. 서버가 값을 보내지 않으면 이 브라우저에서 마지막으로 서버가 받은 값을 보임. HMI는 고른 값을 보내기만 하고 판정·옮기기는 서버와 장비가 함 |
@@ -181,7 +183,9 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 | `tests/adapter.test.js` | 서버가 보낼 수 있는 형식 변형(이름·단위·묶음·시각·판정·상자·이벤트·오류)이 같은 모양이 되는지 |
 | `tests/transport.test.js` | WebSocket·Socket.IO·SSE·폴링, HTTP·웹소켓 명령, FastAPI 오류 |
 | `tests/xml.test.js` | XML 읽기·쓰기, 서버 규약 v1.0 메시지(서버 문서 예시 그대로)와 요청안 메시지(로봇팔이 옮길 부품 포함), XML 명령 보내기와 답 찾기(id로 찾고 답에 있는 명령 이름·목표 모드만 비교, 응답 미확인), 연결 확인 Ping, 연결 닫기 |
-| `tests/home.test.js` | 원점 저장 (브라우저 저장소, 저장소가 막힌 경우) |
+| `tests/cloudflare-login.test.js` | 밖 주소의 로그인·원점: 비밀번호 로그인과 쿠키(24시간·HttpOnly·Secure·SameSite=Strict, 위조·끝난 쿠키 거절), 다른 사이트에서 온 요청·시도 제한, 원점 읽기(누구나)·저장(로그인만, 범위 검사), 원점 복귀 각도 검사(저장된 원점과 다르면·대소문자를 바꾼 이름·이상한 모터 목록·읽지 못한 글은 서버로 넘기지 않음), `set-password.py`의 비밀번호 검사 |
+| `tests/auth.test.js` | 로그인 상태: 로그인이 있는 곳인지(JSON · 화면 HTML · 404 · 파일), 처음 확인이 닿지 않으면 다시 묻기, 로그인 실패 이유 코드, 끝나는 시각·401·로그아웃 |
+| `tests/home.test.js` | 원점 저장 (브라우저 저장소, 저장소가 막힌 경우, 밖 주소의 Worker 저장 — 읽기·저장·실패 코드) |
 | `tests/store.test.js` | 화면 공통 상태: 기록 조회가 없는 서버에 다시 붙으면 이벤트 순번을 잊는지(서버 재시작), 상태가 오래 안 오면 묻는지, 원점 잡기 때 각도가 오래됐으면 묻는지, 끊김 판단(Ping 간격보다 짧게 잡지 않음), 프로그램 종료 때 연결을 닫는지, 로봇팔이 옮길 부품(서버 값 → 없으면 기억한 값, 서버가 모를 때 문구), 카메라 영상(카메라 명령 없이 켜고 끄기·바꾸기) |
 | `tests/xml-server.test.js` · `tests/xml-server.py` | 시험용 XML 서버(서버 v1.0과 회신으로 더해진 것 흉내, `--extended`는 요청안, `--video`는 서버 안내의 영상)가 규약대로 답하는지 — 파이썬이 없으면 건너뜀. 영상 시험 화면은 `tests/fixtures/video-*.jpg` |
 | `tests/mock-server.test.js` | 가짜 서버가 API v0.6과 공정 순서대로 움직이는지 (부품마다 멈춤·로봇팔이 옮길 부품·로봇팔 작업·집기 실패·긴급정지 뒤 원점 복귀(HMI가 보낸 각도)·컨베이어 정지 단추·부품 걸림·감시 타이머·USB 끊김·기록 조회·과열·전압·카메라) |
@@ -204,7 +208,8 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 | `js/adapter.js` | 서버가 보내는 여러 형식을 한 가지 모양으로 맞춤 (XML은 xml-protocol.js에 넘김) |
 | `js/transport.js` | 실시간 받기(WebSocket·Socket.IO·SSE·폴링)와 HTTP 명령 |
 | `js/api.js` | 명령 목록과 서버 연결 (가짜 서버·실제 서버 바꿔 끼움, XML 명령은 id로 답을 찾음) |
-| `js/home.js` | 원점 저장 (이 브라우저, 창끼리 공유) |
+| `js/home.js` | 원점 저장 (이 브라우저, 창끼리 공유. 밖 주소는 Worker 한 곳) |
+| `js/auth.js` | 밖 주소의 로그인 (공용 비밀번호 — 원점 잡기만). `/auth/session`이 없는 곳은 로그인 없이 |
 | `js/store.js` | 화면이 쓰는 상태: 연결 끊김 판단·상태 합치기·통계·서보 경고·원점 잡기/복귀·문구 |
 | `js/camera.js` | 카메라 영상 (서버 안내의 영상(`bridge`)·MJPEG·스냅샷·웹소켓·WebRTC·video·이 PC 카메라)과 판정 상자 겹침 |
 | `js/video.js` | 서버 안내의 카메라 영상: 영상 주소 만들기, 상태 JSON(`/video/status`)을 화면 단계로 나누기, 상태를 겹치지 않게 묻기 |
@@ -215,7 +220,7 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 | `tools/simplicity-audit.js` | 심플함 측정 도구 ([결과 보고서](../docs/simplicity-report.md)) |
 | `tools/dev-server.py` | 캐시를 끈 개발용 정적 서버 (`/`는 빌드한 조작 화면 — 메인 서버 묶음과 같은 배치). `--server http://<메인 서버>:5080`이면 `/ws/hmi`와 `/video/…`를 메인 서버로 그대로 이음 |
 | `tools/make-server-bundle.py` | 메인 서버용 묶음 (React 빌드 + 점검 페이지 → `wwwroot/`). `--dir`이면 zip 대신 폴더로 (Cloudflare에 올리는 화면 파일) |
-| `cloudflare/` | 밖에서 여는 HMI ([docs/cloudflare.md](../docs/cloudflare.md)): `worker.js`(화면 파일 + `/ws/hmi`와 영상 세 경로만 터널로), `wrangler.jsonc`(배포 설정), `package.json`(wrangler 판 고정, `npm run deploy` · `dev`), `set-token.py`(서비스 토큰을 시험하고 Worker에 넣기), `.dev.vars.example`(이 PC 시험용 값) |
+| `cloudflare/` | 밖에서 여는 HMI ([docs/cloudflare.md](../docs/cloudflare.md)): `worker.js`(화면 파일 + `/ws/hmi`와 영상 세 경로만 터널로, 로그인 `/auth/…`, 원점 `/home`, 원점 복귀 각도 검사), `wrangler.jsonc`(배포 설정, 원점 KV · 로그인 시도 제한), `package.json`(wrangler 판 고정, `npm run deploy` · `dev`), `set-token.py`(서비스 토큰을 시험하고 Worker에 넣기), `set-password.py`(로그인 비밀번호와 쿠키 서명 키 넣기), `.dev.vars.example`(이 PC 시험용 값) |
 
 ## 디자인 원칙
 

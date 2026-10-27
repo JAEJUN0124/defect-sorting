@@ -1,5 +1,6 @@
 // 밖에서 여는 HMI(cloudflare/) 시험 — 실행: node --test "hmi-web-mockup/tests/*.test.js"
-// Worker가 /ws/hmi 웹소켓만 서비스 토큰을 붙여 터널로 넘기고 나머지는 화면 파일로 돌리는지, 배포 설정이 Access 없는 주소를 열지 않는지 본다
+// Worker가 /ws/hmi 웹소켓만 서비스 토큰을 붙여 터널로 넘기고 나머지는 화면 파일로 돌리는지, 배포 설정이 화면 주소 하나만 여는지 본다.
+// 로그인 · 원점 · 원점 복귀 각도 검사는 cloudflare-login.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -11,6 +12,7 @@ const DIR = path.join(__dirname, '..', 'cloudflare');
 const loadWorker = () => import(pathToFileURL(path.join(DIR, 'worker.js')).href).then((m) => m.default);
 
 const ENV = { ORIGIN: 'https://hmi-origin.example.net', CF_ACCESS_CLIENT_ID: 'id-1', CF_ACCESS_CLIENT_SECRET: 'secret-1' };
+const tick = () => new Promise((r) => setTimeout(r, 10));
 const UPSTREAM = { upstream: true }; // 터널 쪽의 101이 아닌 답 (토큰이 틀려 401, 서버가 꺼져 502 등) — Worker는 이것을 그대로 돌려줘야 한다
 
 // 정적 파일(ASSETS)과 바깥으로 나가는 fetch를 흉내 낸다
@@ -84,13 +86,16 @@ test('worker: 서버가 101로 받으면 브라우저 쪽 웹소켓을 따로 �
   assert.equal(res.status, 101);
   assert.equal(res.webSocket, client);
   assert.ok(server.accepted && inner.accepted);
-  server.emit('message', { data: '<Message type="Status"/>' });
+  server.emit('message', { data: '<Message type="Status"/>' }); // 서버 → 브라우저는 그대로, 곧바로
   assert.deepEqual(inner.sent, ['<Message type="Status"/>']);
+  // 브라우저 → 서버는 검사(screenMessage)를 거쳐 읽은 XML을 다시 쓴 글로 — 온 차례대로, 닫힘은 앞 메시지 뒤에
   inner.emit('message', { data: '<Message type="Ping"/>' });
-  assert.deepEqual(server.sent, ['<Message type="Ping"/>']);
+  inner.emit('message', { data: '<Message version="1.0" type="GetStatus" id="s-1"/>' });
   server.emit('close', { code: 1006, reason: '' }); // 보낼 수 없는 코드는 1000으로
   assert.deepEqual(inner.closed, { code: 1000, reason: '' });
   inner.emit('close', { code: 1001, reason: 'bye' });
+  await tick();
+  assert.deepEqual(server.sent, ['<Message type="Ping" />', '<Message version="1.0" type="GetStatus" id="s-1" />']);
   assert.deepEqual(server.closed, { code: 1001, reason: 'bye' });
 });
 
@@ -142,7 +147,7 @@ test('worker: 터널 주소나 서비스 토큰이 비면 500 (토큰을 아직 
   }
 });
 
-test('wrangler.jsonc: workers.dev·미리 보기 주소를 열지 않고(Access는 화면 주소에만 있음), 화면 주소와 터널 주소가 다르며, 화면 파일은 site/', () => {
+test('wrangler.jsonc: workers.dev·미리 보기 주소를 열지 않고(주소는 화면 주소 하나), 화면 주소와 터널 주소가 다르며, 화면 파일은 site/', () => {
   const src = fs.readFileSync(path.join(DIR, 'wrangler.jsonc'), 'utf8');
   const cfg = JSON.parse(src.replace(/^\s*\/\/.*$/gm, '')); // 주석은 줄 전체로만 쓴다
   assert.equal(cfg.workers_dev, false);

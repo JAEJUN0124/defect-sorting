@@ -15,6 +15,7 @@ import '../../js/mock-server.js';
 import '../../js/mock-hub.js';
 import '../../js/api.js';
 import '../../js/video.js'; // 브릿지 서버 영상 주소·상태 조회 (store.js · camera.js가 씀)
+import '../../js/auth.js'; // 밖 주소(Cloudflare Worker)의 로그인 — 원점 잡기만 (store.js보다 먼저)
 import '../../js/home.js';
 import '../../js/store.js';
 import '../../js/camera.js';

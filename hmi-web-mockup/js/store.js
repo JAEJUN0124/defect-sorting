@@ -540,9 +540,29 @@
     return fromTelemetry('arm') || fromJoints('arm') || fromJoints('leader') || fromTelemetry('leader');
   }
 
-  // 원점 잡기: 지금 자세를 이 HMI에 원점으로 저장한다 (수동 모드). 서버에는 보내지 않는다
+  // 밖 주소(Cloudflare Worker)의 로그인 (auth.js): 원점 잡기만 로그인해야 한다 (사용자 2026-10-27). 로그인이 없는 곳이면 false
+  const auth = () => (window.HmiAuth ? window.HmiAuth.state : null);
+  function loginNeeded() {
+    const a = auth();
+    return !!a && a.available && !a.loggedIn;
+  }
+  // 로그인이 있는지 아직 모름 — 그동안은 원점 잡기를 막는다 (어디에 저장할지 모름)
+  const loginUnknown = () => !!auth() && !auth().checked;
+  // 원점을 Worker 한 곳에 두는지 (밖 주소 — 그 주소로 연 모든 HMI가 같은 원점)
+  const homeShared = () => !!(window.HmiHome.remote && window.HmiHome.remote());
+
+  // Worker에 둔 원점을 다시 읽는다. 읽지 못하면 지금 가진 값을 쓴다 — 다르면 Worker가 원점 복귀를 거절한다
+  async function refreshHome() {
+    if (!homeShared()) return;
+    try { await window.HmiHome.refresh(); } catch (err) { /* 위 설명 */ }
+  }
+
+  // 원점 잡기: 지금 자세를 이 HMI에 원점으로 저장한다 (수동 모드). 서버에는 보내지 않는다.
+  // 밖 주소면 Worker에 저장하고, 로그인해야 한다
   async function saveHome() {
     const st = state.status;
+    if (loginUnknown()) throw new api.ApiError('LOGIN_UNKNOWN', 0);
+    if (loginNeeded()) throw new api.ApiError('LOGIN_REQUIRED', 0);
     if (!state.online || !st) throw new api.ApiError('NETWORK', 0);
     if (st.estop) throw new api.ApiError('ESTOP_ACTIVE', 0); // 힘이 빠져 처진 자세가 원점이 되지 않게
     if (st.mode === 'auto') throw new api.ApiError('NOT_MANUAL', 0);
@@ -553,7 +573,13 @@
       try { await api.getStatus(); } catch (err) { /* 아래에서 "각도를 받지 못함"으로 알린다 */ }
       pose = currentPose();
     }
-    const saved = pose && window.HmiHome.save(pose);
+    let saved;
+    try {
+      saved = pose && (await window.HmiHome.save(pose));
+    } catch (err) {
+      if (err.code === 'LOGIN_REQUIRED' && window.HmiAuth) window.HmiAuth.expired(); // Worker가 로그인이 끝났다고 답함
+      throw err;
+    }
     if (!saved) throw new api.ApiError('POSE_UNAVAILABLE', 0);
     state.home = saved;
     emit('home', saved);
@@ -561,15 +587,18 @@
     return { home: saved, persisted: window.HmiHome.persisted() };
   }
 
-  // 원점 복귀: 저장된 원점 각도를 서버에 보낸다 (자동 모드·정지 상태)
-  function goHome() {
-    if (!state.home) return Promise.reject(new api.ApiError('HOME_NOT_SET', 0));
+  // 원점 복귀: 저장된 원점 각도를 서버에 보낸다 (자동 모드·정지 상태). 밖 주소면 Worker의 원점을 먼저 다시 읽는다
+  async function goHome() {
+    await refreshHome();
+    if (!state.home) throw new api.ApiError('HOME_NOT_SET', 0);
     return api.home(state.home);
   }
 
-  // 라인 시작: 자동 모드에서는 저장된 원점이 있어야 한다 — 원점을 HMI가 가져 서버는 이 조건을 보지 못한다
-  function startLine() {
-    if (homeBlock() === 'unset') return Promise.reject(new api.ApiError('HOME_NOT_SET', 0));
+  // 라인 시작: 자동 모드에서는 저장된 원점이 있어야 한다 — 원점을 HMI가 가져 서버는 이 조건을 보지 못한다.
+  // 밖 주소에서 원점이 없어 보이면 다른 HMI가 그 사이 저장했을 수 있어 한 번 다시 읽는다
+  async function startLine() {
+    if (homeBlock() === 'unset') await refreshHome();
+    if (homeBlock() === 'unset') throw new api.ApiError('HOME_NOT_SET', 0);
     return api.start();
   }
 
@@ -687,8 +716,28 @@
       .finally(() => { askingStatus = false; });
   }, STATUS_POLL_TICK_MS);
 
-  // 다른 창에서 원점을 바꾸면 따라간다
+  // 다른 창에서 원점을 바꾸면 따라간다 (Worker에 둘 때는 다시 읽어 바뀌었을 때)
   window.HmiHome.subscribe((h) => { state.home = h; emit('home', h); });
+
+  // 로그인이 있는 곳(밖 주소)이면 원점을 Worker 한 곳에 둔다 (auth.js · home.js useRemote). 로그인 상태가 바뀌면 화면을 다시 그린다
+  const HOME_URL = '/home';
+  if (window.HmiAuth) {
+    window.HmiAuth.subscribe((a) => {
+      if (a.available && window.HmiHome.useRemote && !homeShared()) {
+        window.HmiHome.useRemote(HOME_URL);
+        refreshHome();
+      }
+      emit('auth', a);
+    });
+  }
+  // 탭이 다시 보이면 로그인(끝났는지)과 Worker의 원점(다른 HMI가 바꿨는지)을 다시 본다
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || !started) return;
+      if (window.HmiAuth) window.HmiAuth.check();
+      refreshHome();
+    });
+  }
 
   window.HmiStore = {
     state,
@@ -696,6 +745,7 @@
     start() {
       if (started) return;
       started = true;
+      if (window.HmiAuth) window.HmiAuth.check();
       api.connect({
         onOpen() {
           // 기록 조회가 없는 서버(XML 등)는 다시 켜졌는지 알 수 없고, 순번은 서버를 켤 때부터 다시 센다 (XML 회신 2026-10-16) —
@@ -741,6 +791,9 @@
     unreportedDetail,
     homeBlock,
     homeSetHint,
+    loginNeeded,
+    loginUnknown,
+    homeShared,
     currentPose,
     saveHome,
     goHome,

@@ -256,8 +256,10 @@
 }
 .view__tools {                      /* 장치 줄이 없어도 항상 오른쪽 끝 */
   display: flex;
+  flex: none;                       /* 좁으면 장치 줄이 접히고, 키 이름(로그인 · 다크 모드 · 로그)은 한 줄로 */
   gap: var(--s-2);
   margin-left: auto;
+  white-space: nowrap;
 }
 /* 확인하지 않은 경고가 있으면 로그 아이콘 오른쪽 위에 빨간 점.
    테두리를 바탕색으로 둘러 아이콘 선과 붙어 보이지 않게 한다 */
@@ -400,6 +402,31 @@
   .confirm[open] { animation: fade-in var(--t-fast) ease-out; }
 }
 
+/* 로그인 창의 입력 칸 (밖 주소만 — 원점 잡기만 로그인). 이름은 칸 위에 늘 보인다 */
+.field__label {
+  display: block;
+  margin-top: var(--s-5);
+  font-size: var(--fs-s);
+  font-weight: 600;
+  color: var(--c-ink-2);
+}
+.field__input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-top: var(--s-2);
+  padding: 0 var(--s-3);
+  background: var(--c-bg);
+  color: var(--c-ink);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-key);
+  font: inherit;
+  font-size: var(--fs-m);
+}
+.field__input:hover { border-color: var(--c-ink-2); }
+.field__input[aria-invalid="true"] { border-color: var(--c-signal-red); }
+.field__error { margin-top: var(--s-2); }
+
 /* ---------- 종료 후 ---------- */
 
 .ended {
@@ -456,4 +483,6 @@
   .panel { padding: var(--s-5) var(--s-4); }
   .view { --view-pad-y: var(--s-5); --view-pad-x: var(--s-4); }
   .stats__list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .view__foot { flex-wrap: wrap; } /* 장치 줄 아래로 키 줄(로그인 · 다크 모드 · 로그) — 키 이름은 접지 않는다 */
+  .view__tools .key--quiet { padding: 0 var(--s-2); } /* 360px에서도 키 셋이 여백 안에 들어가게 */
 }

@@ -67,6 +67,7 @@ window.HMI_I18N.ko = {
   'home.set': '원점 잡기',
   'home.go.autoOnly': '원점 복귀는 자동 모드에서 합니다',
   'home.set.manualOnly': '원점 잡기는 수동 모드에서 합니다',
+  'home.set.loginRequired': '원점 잡기는 로그인한 뒤에 할 수 있습니다. 누르면 로그인 창이 열립니다.',
   'home.setHint': '리더암으로 자세를 잡고 원점 잡기를 누르세요.',
   'home.setHint.saved': '리더암으로 자세를 잡고 원점 잡기를 누르세요. 마지막 저장 {time}.',
   'home.notSet': '저장된 원점이 없습니다. 수동 모드에서 원점 잡기를 하세요.',
@@ -155,6 +156,23 @@ window.HMI_I18N.ko = {
   // 테마
   'theme.dark': '다크 모드',
 
+  // 로그인 — 밖 주소(Cloudflare Worker)에만 있음. 로그인으로 바뀌는 것은 원점 잡기뿐 (사용자 2026-10-27)
+  'login.open': '로그인',
+  'login.logout': '로그아웃',
+  'login.until': '{time}까지 로그인되어 있습니다',
+  'login.title': '로그인',
+  'login.body': '팀 비밀번호로 로그인합니다. 로그인하면 원점 잡기를 할 수 있고, 다른 기능은 로그인하지 않아도 씁니다.',
+  'login.body.setHome': '원점 잡기는 로그인해야 합니다. 팀 비밀번호를 넣으세요.',
+  'login.password': '비밀번호',
+  'login.submit': '로그인',
+  'login.busy': '확인 중…',
+  'login.empty': '비밀번호를 넣으세요.',
+  'login.error.LOGIN_WRONG': '비밀번호가 맞지 않습니다. 다시 넣으세요.',
+  'login.error.LOGIN_TOO_MANY': '로그인 시도가 너무 많습니다. 1분 뒤 다시 하세요.',
+  'login.error.LOGIN_NOT_CONFIGURED': 'Worker에 비밀번호가 설정되지 않아 로그인할 수 없습니다. HMI 담당에게 알리세요.',
+  'login.error.LOGIN_NETWORK': '로그인 요청이 닿지 않았습니다. 인터넷 연결을 확인한 뒤 다시 누르세요.',
+  'login.error.LOGIN_FAILED': '로그인하지 못했습니다. 잠시 뒤 다시 누르세요.',
+
   // 로그
   'log.open': '로그',
   'log.title': '로그',
@@ -183,6 +201,8 @@ window.HMI_I18N.ko = {
   'event.home_started': '원점 복귀를 시작했습니다',
   'event.home_completed': '원점 복귀를 마쳤습니다',
   'event.home_set': '로봇팔의 지금 자세를 원점으로 저장했습니다',
+  'event.login': '로그인했습니다',
+  'event.logout': '로그아웃했습니다',
   'event.shutdown_completed': '프로그램 종료 정리를 마쳤습니다',
   'event.server_protocol_error': '서버가 통신 오류를 알렸습니다 ({code})',
   'event.mode_changed': '{mode} 모드로 바꿨습니다',
@@ -287,6 +307,12 @@ window.HMI_I18N.ko = {
   'error.INVALID_MODE': '서버가 운전 모드 값을 받지 않았습니다. config.js의 운전 모드 값(XML은 server.xml.modeValues, JSON은 server.modeValues)을 확인하세요.',
   'error.POSE_UNAVAILABLE': '로봇팔 각도를 받지 못해 원점을 저장하지 못했습니다. 로봇팔·리더암 연결을 확인한 뒤 다시 누르세요.',
   'error.INVALID_ANGLES': '서버가 원점 각도를 받지 않았습니다. 수동 모드에서 원점 잡기를 다시 한 뒤 누르세요.',
+  // 밖 주소(Cloudflare Worker): 원점은 Worker 한 곳에 있고 원점 잡기는 로그인해야 한다
+  'error.LOGIN_REQUIRED': '원점 잡기는 로그인해야 합니다. 로그인한 뒤 다시 누르세요.',
+  'error.LOGIN_UNKNOWN': '로그인이 있는 주소인지 확인하는 중입니다. 잠시 뒤 다시 누르세요.',
+  'error.HOME_SAVE_FAILED': '원점을 저장하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 누르세요.',
+  'error.HOME_INVALID': '각도 값이 맞지 않아 원점을 저장하지 못했습니다. 로봇팔 각도를 확인한 뒤 다시 누르세요.',
+  'error.HOME_MISMATCH': '저장된 원점이 바뀌어 원점 복귀를 보내지 않았습니다. 잠시 뒤 다시 누르세요.',
   // XML 규약 (docs/server-xml-v1.0.md) — 서버의 답(Reply·Error)과 HMI가 보내지 못한 경우
   'error.NO_REPLY': '서버 응답을 확인하지 못했습니다. 명령이 처리됐는지는 상태 표시로 확인한 뒤 필요하면 다시 누르세요.',
   'error.NOT_IN_PROTOCOL': '서버 규약에 {command} 명령이 없어 보내지 않았습니다. 서버 담당이 추가하면 config.js의 server.xml.commands에 이름을 넣으세요.',
@@ -328,6 +354,10 @@ window.HMI_I18N.ko = {
   'dialog.setHome.title': '지금 자세를 원점으로 저장할까요?',
   'dialog.setHome.body': '로봇팔의 지금 6축 각도를 이 HMI에 새 원점으로 저장합니다. 저장된 원점은 덮어씁니다.',
   'dialog.setHome.confirm': '원점 저장',
+  // 밖 주소: 원점이 Worker 한 곳에 있어 그 주소로 여는 모든 HMI가 같이 바뀐다
+  'dialog.setHomeShared.title': '지금 자세를 원점으로 저장할까요?',
+  'dialog.setHomeShared.body': '로봇팔의 지금 6축 각도를 새 원점으로 저장합니다. 이 주소로 여는 모든 HMI가 이 원점을 씁니다. 저장된 원점은 덮어씁니다.',
+  'dialog.setHomeShared.confirm': '원점 저장',
   'dialog.exit.title': '프로그램을 종료할까요?',
   'dialog.exit.body': 'HMI 화면만 닫습니다. 서버에는 아무것도 보내지 않으므로 라인과 장비는 그대로입니다.',
   'dialog.exit.confirm': '프로그램 종료',

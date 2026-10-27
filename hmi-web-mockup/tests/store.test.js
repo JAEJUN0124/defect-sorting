@@ -10,11 +10,11 @@ const JOINTS = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wr
 const tick = () => new Promise((r) => setTimeout(r, 10));
 
 // store.js를 새로 불러온다. 가짜 서버 연결이 받은 handlers(onOpen·onClose·onMessage)로 메시지를 넣는다
-function freshStore(api, xml, cfgExtra) {
+function freshStore(api, xml, cfgExtra, homeExtra) {
   window.HMI_CONFIG = Object.assign({ useMock: false, server: { xml: Object.assign({}, xml) }, cameras: {}, heartbeatTimeoutMs: 0 }, cfgExtra);
   window.HMI_ROBOT = {};
   window.I18N = { t: (k) => k };
-  window.HmiHome = { JOINTS, read: () => null, save: (pose) => Object.assign({ setAt: new Date().toISOString() }, pose), subscribe: () => () => {}, persisted: () => true };
+  window.HmiHome = Object.assign({ JOINTS, read: () => null, save: (pose) => Object.assign({ setAt: new Date().toISOString() }, pose), subscribe: () => () => {}, persisted: () => true }, homeExtra);
   class ApiError extends Error { constructor(code) { super(code); this.code = code; } }
   window.HmiApi = Object.assign({ xml: true, ApiError, reconnect() {}, close() {} }, api);
   const full = path.join(__dirname, '..', 'js', 'store.js');
@@ -227,4 +227,91 @@ test('store.js: 퍼센트로 온 관절(그리퍼)은 화면에서 도로 바꿔
   window.HMI_ROBOT.percentToDeg = { gripper: [0, 120] }; // 캘리브레이션 범위를 알면 바꾸는 값
   assert.equal(store.shownAngle('gripper', 50, 'pct'), 60);
   assert.equal(store.shownAngle('wrist_roll', -50, 'pct'), -50);
+});
+
+// 밖 주소(Cloudflare Worker)의 로그인: 원점 잡기만 로그인해야 하고, 원점은 Worker 한 곳에 둔다 (사용자 2026-10-27)
+const ANGLES = { shoulder_pan: 1, shoulder_lift: -2, elbow_flex: 3, wrist_flex: -4, wrist_roll: 5, gripper: 6 };
+
+test('store.js: 로그인이 있는 곳에서 로그인하지 않으면 원점 잡기를 LOGIN_REQUIRED로 막고, 로그인하면 저장하며, Worker가 로그인이 끝났다고 하면 화면도 로그아웃', async (t) => {
+  const auth = { state: { checked: true, available: true, loggedIn: false, until: null }, subscribe: () => () => {}, check() {}, expired() { this.state.loggedIn = false; } };
+  window.HmiAuth = auth;
+  t.after(() => { delete window.HmiAuth; });
+  let handlers = null;
+  const saves = [];
+  const store = freshStore({ connect(h) { handlers = h; }, getInfo: async () => null, getHistory: async () => null, getStatus: async () => ({}) }, { statusPollMs: 0 }, undefined, {
+    remote: () => true,
+    save: async (pose) => { saves.push(pose); return Object.assign({ setAt: new Date().toISOString() }, pose); },
+  });
+  store.start();
+  handlers.onOpen();
+  handlers.onMessage({ type: 'status', data: { mode: 'manual' } });
+  handlers.onMessage({ type: 'joints', data: { source: 'leader', unit: 'deg', angles: ANGLES, units: {} } });
+  await tick();
+  assert.equal(store.loginNeeded(), true);
+  assert.equal(store.homeShared(), true);
+  await assert.rejects(store.saveHome(), (e) => e.code === 'LOGIN_REQUIRED');
+  assert.equal(saves.length, 0);
+
+  auth.state.loggedIn = true;
+  assert.equal(store.loginNeeded(), false);
+  const res = await store.saveHome();
+  assert.deepEqual(res.home.angles, ANGLES);
+  assert.deepEqual(store.state.home.angles, ANGLES);
+
+  window.HmiHome.save = async () => { throw Object.assign(new Error('LOGIN_REQUIRED'), { code: 'LOGIN_REQUIRED' }); };
+  await assert.rejects(store.saveHome(), (e) => e.code === 'LOGIN_REQUIRED');
+  assert.equal(auth.state.loggedIn, false);
+
+  auth.state.checked = false; // 로그인이 있는 곳인지 아직 모르면 어디에 저장할지 몰라 막는다
+  await assert.rejects(store.saveHome(), (e) => e.code === 'LOGIN_UNKNOWN');
+});
+
+test('store.js: 로그인이 없는 곳(장비망 안)은 지금처럼 — 로그인 없이 원점 잡기', async () => {
+  let handlers = null;
+  const store = freshStore({ connect(h) { handlers = h; }, getInfo: async () => null, getHistory: async () => null, getStatus: async () => ({}) }, { statusPollMs: 0 });
+  store.start();
+  handlers.onOpen();
+  handlers.onMessage({ type: 'status', data: { mode: 'manual' } });
+  handlers.onMessage({ type: 'joints', data: { source: 'leader', unit: 'deg', angles: ANGLES, units: {} } });
+  await tick();
+  assert.equal(store.loginNeeded(), false);
+  assert.equal(store.loginUnknown(), false);
+  assert.equal(store.homeShared(), false);
+  assert.deepEqual((await store.saveHome()).home.angles, ANGLES);
+});
+
+test('store.js: 원점을 Worker에 둘 때 원점 복귀 · 자동 시작은 Worker의 원점을 다시 읽은 뒤 — 읽지 못하면 가진 값으로 (다르면 Worker가 거절)', async () => {
+  let handlers = null;
+  let notify = null;
+  let remote = { angles: ANGLES, units: {}, setAt: '2026-10-27T00:00:00Z', source: 'leader' };
+  let reads = 0;
+  const sent = [];
+  const store = freshStore({
+    connect(h) { handlers = h; }, getInfo: async () => null, getHistory: async () => null, getStatus: async () => ({}),
+    home: async (h) => { sent.push(h); return {}; },
+    start: async () => { sent.push('start'); return {}; },
+  }, { statusPollMs: 0 }, undefined, {
+    remote: () => true,
+    subscribe: (fn) => { notify = fn; return () => {}; },
+    refresh: async () => { reads += 1; notify(remote); return remote; },
+  });
+  store.start();
+  handlers.onOpen();
+  handlers.onMessage({ type: 'status', data: { mode: 'auto' } });
+  await tick();
+  assert.equal(store.state.home, null); // 아직 읽지 않음 — 자동 시작이 원점 없음으로 막혀 보인다
+  await store.startLine(); // 다른 HMI가 그 사이 저장했을 수 있어 한 번 읽고 시작
+  assert.deepEqual(sent, ['start']);
+  await store.goHome();
+  assert.deepEqual(sent[1], remote);
+  assert.equal(reads, 2);
+
+  window.HmiHome.refresh = async () => { throw Object.assign(new Error('HOME_LOAD_FAILED'), { code: 'HOME_LOAD_FAILED' }); };
+  await store.goHome(); // 읽지 못해도 가진 원점으로 보낸다
+  assert.deepEqual(sent[2], remote);
+
+  remote = null; // 다른 곳에서 원점이 없어짐
+  window.HmiHome.refresh = async () => { notify(remote); return remote; };
+  await assert.rejects(store.goHome(), (e) => e.code === 'HOME_NOT_SET');
+  await assert.rejects(store.startLine(), (e) => e.code === 'HOME_NOT_SET');
 });

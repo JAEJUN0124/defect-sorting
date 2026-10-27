@@ -3,3 +3,6 @@
 ORIGIN=http://127.0.0.1:5080
 CF_ACCESS_CLIENT_ID=local-test
 CF_ACCESS_CLIENT_SECRET=local-test
+# 로그인(원점 잡기만) — 이 PC 시험용 비밀번호와 쿠키 서명 키. 실제 값은 set-password.py로 Worker 비밀값에 넣는다
+HMI_PASSWORD=local-test-password
+SESSION_KEY=local-test-session-key

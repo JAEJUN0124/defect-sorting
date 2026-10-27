@@ -1,15 +1,20 @@
 {
-  // 밖에서 여는 HMI — 화면 파일(site/, make-server-bundle.py --dir로 만듦)은 Cloudflare가 내주고, /ws/hmi만 worker.js가 터널로 넘긴다.
-  // 설정 순서와 구조는 docs/cloudflare.md. 서비스 토큰(CF_ACCESS_CLIENT_ID · CF_ACCESS_CLIENT_SECRET)은 wrangler secret put으로 넣는다
+  // 밖에서 여는 HMI — 화면 파일(site/, make-server-bundle.py --dir로 만듦)은 Cloudflare가 내주고, /ws/hmi와 영상만 worker.js가 터널로 넘긴다.
+  // 설정 순서와 구조는 docs/cloudflare.md. 서비스 토큰(CF_ACCESS_CLIENT_ID · CF_ACCESS_CLIENT_SECRET)은 set-token.py,
+  // 로그인 비밀번호와 쿠키 서명 키(HMI_PASSWORD · SESSION_KEY)는 set-password.py가 wrangler secret put으로 넣는다
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "defect-hmi",
   "main": "worker.js",
   "compatibility_date": "2026-09-25",
-  // *.workers.dev 주소와 미리 보기 주소는 열지 않는다 — Access 앱은 hmi.hypefree.net에만 걸려 있어, 열면 토큰을 든 Worker가 그대로 드러난다
+  // *.workers.dev 주소와 미리 보기 주소는 열지 않는다 — 주소를 hmi.hypefree.net 하나로 둔다 (로그인 쿠키·원점·안내가 모두 이 주소 기준)
   "workers_dev": false,
   "preview_urls": false,
   "routes": [{ "pattern": "hmi.hypefree.net", "custom_domain": true }],
   "assets": { "directory": "./site", "binding": "ASSETS" },
   // 터널 주소 (Cloudflare Tunnel → 장비망 안 cloudflared → 메인 서버 http://10.108.108.98:5080)
-  "vars": { "ORIGIN": "https://hmi-origin.hypefree.net" }
+  "vars": { "ORIGIN": "https://hmi-origin.hypefree.net" },
+  // 원점 (사용자 2026-10-27): 밖 주소로 연 HMI가 모두 같은 원점을 쓴다. id를 비워 두면 첫 배포 때 wrangler가 KV를 만들어 붙인다
+  "kv_namespaces": [{ "binding": "HOME" }],
+  // 로그인 시도: 한 IP에서 60초에 5번까지 (Cloudflare 위치마다 따로 세는 대략의 제한). namespace_id는 이 계정 안에서 고른 번호
+  "ratelimits": [{ "name": "LOGIN_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }]
 }

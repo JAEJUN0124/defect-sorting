@@ -36,8 +36,12 @@
   };
 
   // v1.0 오류 코드 → HMI 오류 코드 (화면 문구: js/i18n/ko.js error.*)
-  // InvalidTarget은 요청안 SetSortTarget(로봇팔이 옮길 부품)의 값이 틀렸을 때 (xml-server.py --extended)
-  const REPLY_CODES = { InvalidCommand: 'XML_INVALID_COMMAND', UnknownCommand: 'XML_UNKNOWN_COMMAND', InvalidMode: 'INVALID_MODE', InvalidTarget: 'INVALID_SORT_TARGET' };
+  // InvalidTarget은 요청안 SetSortTarget(로봇팔이 옮길 부품)의 값이 틀렸을 때 (xml-server.py --extended).
+  // HomeMismatch · HomeNotSet은 서버가 아니라 밖 주소의 Worker가 보낸 거절 — 원점 복귀 각도가 Worker에 저장된 원점과 다르거나 원점이 없음 (cloudflare/worker.js)
+  const REPLY_CODES = {
+    InvalidCommand: 'XML_INVALID_COMMAND', UnknownCommand: 'XML_UNKNOWN_COMMAND', InvalidMode: 'INVALID_MODE', InvalidTarget: 'INVALID_SORT_TARGET',
+    HomeMismatch: 'HOME_MISMATCH', HomeNotSet: 'HOME_NOT_SET',
+  };
   const ERROR_CODES = {
     InvalidXml: 'XML_INVALID_XML', InvalidRequest: 'XML_INVALID_REQUEST', UnsupportedVersion: 'XML_UNSUPPORTED_VERSION',
     UnknownType: 'XML_UNKNOWN_TYPE', MissingRequestId: 'XML_MISSING_REQUEST_ID',

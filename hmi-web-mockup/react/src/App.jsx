@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Icons, { Icon } from './Icons.jsx';
 import Camera from './Camera.jsx';
 import ConfirmDialog from './ConfirmDialog.jsx';
+import LoginDialog from './LoginDialog.jsx';
 import LogWindow from './LogWindow.jsx';
 
 // 조작 화면 — 기존 js/app.js를 React로 옮긴 것. 서버 연결과 상태 모으기는 기존 store.js(window.HmiStore),
@@ -46,6 +47,7 @@ export default function App() {
   const [logOpen, setLogOpen] = useState(false);
   const logOpenRef = useRef(false);
   const [ask, setAsk] = useState(null); // 확인 창
+  const [loginAsk, setLoginAsk] = useState(null); // 로그인 창 (밖 주소만)
   const [dark, setDark] = useState(isDark);
   const camera = useRef(null); // CameraView
   const estopBtn = useRef(null);
@@ -92,6 +94,7 @@ export default function App() {
         }
         case 'info':
         case 'home':
+        case 'auth': // 로그인했는지·로그인이 있는 주소인지 (js/auth.js)
         case 'joints':
         case 'video': // 브릿지 영상: 켜기·끄기, 탑뷰/그리퍼, 상태 조회 결과
         case 'sortTarget':
@@ -122,16 +125,16 @@ export default function App() {
     return () => darkQuery.removeEventListener('change', onChange);
   }, []);
 
-  // Esc로 로그 창 닫기. 확인 창이 떠 있으면 Esc는 확인 창 몫이다
+  // Esc로 로그 창 닫기. 확인 창·로그인 창이 떠 있으면 Esc는 그 창 몫이다
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key !== 'Escape' || !logOpenRef.current || ask) return;
+      if (e.key !== 'Escape' || !logOpenRef.current || ask || loginAsk) return;
       e.preventDefault();
       setLogOpen(false);
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [ask]);
+  }, [ask, loginAsk]);
 
   // ---------- 지금 상태 ----------
   const S = store.state.status;
@@ -190,9 +193,27 @@ export default function App() {
     act('run', () => (isRunning ? api.stop() : store.startLine()));
   }
 
-  // 원점 잡기는 저장된 원점을 덮어쓴다 — 확인 창을 거친다
+  // 로그인 창: 로그인하면 true. 밖 주소(Cloudflare Worker)에만 있다 — 로그인으로 바뀌는 것은 원점 잡기뿐 (사용자 2026-10-27)
+  const askLogin = (reason) => new Promise((resolve) => setLoginAsk({ reason, resolve, opener: document.activeElement }));
+
+  async function onLogin(password) {
+    await window.HmiAuth.login(password);
+    addLog({ code: 'login', level: 'info', at: new Date().toISOString() });
+  }
+
+  function onLoginKey() {
+    if (!window.HmiAuth.state.loggedIn) {
+      askLogin(null);
+      return;
+    }
+    window.HmiAuth.logout();
+    addLog({ code: 'logout', level: 'info', at: new Date().toISOString() });
+  }
+
+  // 원점 잡기는 저장된 원점을 덮어쓴다 — 확인 창을 거친다. 밖 주소면 로그인부터 하고, 그 주소의 모든 HMI가 같이 쓰는 원점이라고 알린다
   async function onSetHome() {
-    if (await confirm('setHome')) await act('setHome', () => store.saveHome());
+    if (store.loginNeeded() && !(await askLogin('setHome'))) return;
+    if (await confirm(store.homeShared() ? 'setHomeShared' : 'setHome')) await act('setHome', () => store.saveHome());
   }
 
   function onMode(mode) {
@@ -267,7 +288,10 @@ export default function App() {
   const home = store.state.home;
   let homeHint = null;
   if (homeBlock) homeHint = { text: t(homeBlock === 'unset' ? 'home.notSet' : 'home.needed') };
+  else if (!auto && (stopped || running) && store.loginNeeded()) homeHint = { text: t('home.set.loginRequired') };
   else if (!auto && (stopped || running)) homeHint = { text: home || manual ? store.homeSetHint() : t('home.notSet.short') };
+  // 로그인 (밖 주소만): 로그인하지 않아도 원점 잡기 말고는 다 쓴다. 로그인이 있는 주소인지 확인하는 동안에는 원점 잡기만 잠근다
+  const auth = window.HmiAuth ? window.HmiAuth.state : { available: false, loggedIn: false, until: null };
 
   // 리더암 각도: 수동 모드에서. 운전 모드를 모르면(XML v1.0) 서버가 각도를 보내는 동안 늘 보인다
   const leader = store.state.joints.leader;
@@ -359,7 +383,7 @@ export default function App() {
               </button>
               <button
                 type="button" className="key" id="btn-sethome" aria-describedby="home-note"
-                disabled={!(stopped || running) || auto || ui.busy.has('setHome')}
+                disabled={!(stopped || running) || auto || ui.busy.has('setHome') || store.loginUnknown()}
                 title={auto ? t('home.set.manualOnly') : ''}
                 onClick={onSetHome}
               >
@@ -510,6 +534,17 @@ export default function App() {
               </ul>
             </div>
             <div className="view__tools">
+              {/* 밖 주소에만 — 로그인하면 원점 잡기를 할 수 있다. 로그인한 동안은 로그아웃 키가 되고, 끝나는 시각을 풍선 도움말로 보인다 */}
+              {auth.available && (
+                <button
+                  type="button" className="key key--quiet view__toggle" id="btn-login"
+                  title={auth.loggedIn && auth.until ? t('login.until', { time: store.shortTime(auth.until) }) : undefined}
+                  onClick={onLoginKey}
+                >
+                  <Icon name="key" />
+                  <span>{t(auth.loggedIn ? 'login.logout' : 'login.open')}</span>
+                </button>
+              )}
               <button type="button" className="key key--quiet view__toggle" id="btn-theme" aria-pressed={String(dark)} onClick={toggleTheme}>
                 <Icon name="moon" />
                 <span>{t('theme.dark')}</span>
@@ -533,6 +568,7 @@ export default function App() {
       </div>
 
       <ConfirmDialog ask={ask} t={t} onDone={() => setAsk(null)} />
+      <LoginDialog ask={loginAsk} t={t} onLogin={onLogin} onDone={() => setLoginAsk(null)} />
 
       {ended && (
         <div className="ended" id="ended">
