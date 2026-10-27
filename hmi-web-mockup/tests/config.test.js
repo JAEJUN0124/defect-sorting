@@ -99,7 +99,7 @@ test('make-server-bundle.py --dir: wwwroot/ 내용을 폴더에 씀(README 빼�
     const files = listFiles(site);
     assert.ok(files.includes('index.html'));
     // 검색에 걸리지 않게: 맨 위 robots.txt는 모두 막고, 조작 화면은 noindex (사용자 2026-10-28)
-    assert.match(fs.readFileSync(path.join(site, 'robots.txt'), 'utf8'), /^User-agent: \*\nDisallow: \/$/m);
+    assert.match(fs.readFileSync(path.join(site, 'robots.txt'), 'utf8'), /^User-agent: \*\r?\nDisallow: \/\r?$/m);
     assert.match(fs.readFileSync(path.join(site, 'index.html'), 'utf8'), /<meta name="robots" content="noindex, nofollow">/);
     assert.ok(files.some((f) => /^assets\/.+\.js$/.test(f)));
     ['tools/server-check.html', 'tools/devices.html', 'js/config.js', 'js/xml.js', 'css/base.css'].forEach((f) => assert.ok(files.includes(f), f));
