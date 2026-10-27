@@ -27,7 +27,7 @@ Cloudflare Access — 서비스 토큰만 (없으면 401)
         ▼
 Cloudflare Tunnel  defect-hmi
         ▼
-cloudflared (장비망 안 PC, 밖으로 나가는 연결만 씀)
+cloudflared (서버 PC, 밖으로 나가는 연결만 씀 — 2026-10-28 서버가 옮겨 가 서버 담당에게 설치를 부탁함: hmi-server-tunnel.md)
         ▼
 메인 서버  http://192.168.219.101:8000/ws/hmi  (그대로)
 ```
