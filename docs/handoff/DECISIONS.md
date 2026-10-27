@@ -33,8 +33,8 @@ handoff_spec: 1
 
 ## D-006 화면 기본 조건
 - 범위: HMI 화면
-- 결정: 로그인은 두지 않는다. 문구는 한국어만 쓰되 영어를 추가할 수 있는 구조로 둔다. 노트북·데스크톱을 우선으로 하되 다른 화면 크기에서도 깨지지 않게 한다.
-- 근거: 사용자 2026-10-06 · HISTORY/2026-10-12-hmi-decisions.md
+- 결정: 로그인은 장비망 밖 주소에만 두고, 로그인으로 바뀌는 것은 원점 잡기뿐이다(D-023). 장비망 안 화면에는 로그인을 두지 않는다. 문구는 한국어만 쓰되 영어를 추가할 수 있는 구조로 둔다. 노트북·데스크톱을 우선으로 하되 다른 화면 크기에서도 깨지지 않게 한다.
+- 근거: 사용자 2026-10-27 · HISTORY/2026-10-27-login-decision.md (이전 결정: 사용자 2026-10-06 · HISTORY/2026-10-12-hmi-decisions.md)
 
 ## D-007 원점 잡기는 수동 모드에서 지금 자세를 저장하고, 원점 복귀는 따로 둔다
 - 범위: 원점(F-04)
@@ -81,8 +81,8 @@ handoff_spec: 1
 
 ## D-017 장비망 밖에서는 Cloudflare로 HMI를 연다
 - 범위: HMI 화면을 내주는 곳과 장비망 밖에서의 접속
-- 결정: 장비망 밖에서는 사용자의 도메인(`hmi.hypefree.net`)으로 연다. 화면 파일은 Cloudflare Worker가 내주고, 서버로는 Cloudflare Tunnel로 필요한 경로(`/ws/hmi`, 서버가 HTTP로 내주는 영상)만 넘기며, 앞에 Cloudflare Access(허락한 사람만)를 둔다. 메인 서버에서 화면을 띄우는 방식은 쓰지 않는다.
-- 근거: 사용자 2026-10-17 · HISTORY/2026-10-17-cloudflare-decision.md
+- 결정: 장비망 밖에서는 사용자의 도메인(`hmi.hypefree.net`)으로 연다. 화면 파일은 Cloudflare Worker가 내주고, 서버로는 Cloudflare Tunnel로 필요한 경로(`/ws/hmi`, 서버가 HTTP로 내주는 영상)만 넘긴다. 화면 주소 앞에는 Cloudflare Access를 두지 않고 로그인(D-023)을 쓰며, 터널 주소 앞의 Access(서비스 토큰만)는 그대로 둔다. 메인 서버에서 화면을 띄우는 방식은 쓰지 않는다.
+- 근거: 사용자 2026-10-27 · HISTORY/2026-10-27-login-decision.md (이전 결정: 사용자 2026-10-17 · HISTORY/2026-10-17-cloudflare-decision.md)
 - 관련 문서: docs/cloudflare.md
 
 ## D-018 로봇팔이 옮길 부품은 HMI에서 고르고, HMI는 고른 값만 보낸다
@@ -108,8 +108,14 @@ handoff_spec: 1
 - 근거: 사용자 2026-10-19 · HISTORY/2026-10-19-conveyor-always-on-decision.md
 - 관련 문서: hmi-web-mockup/README.md
 
-## D-022 포스터는 8안을 최종으로 쓴다
+## D-022 포스터는 10안을 최종으로 쓴다
 - 범위: 프로젝트 포스터(`poster/`)
-- 결정: 제출·인쇄에는 8안(`poster/v8/poster.pdf`)을 쓴다. 종이는 제출 규격 595 × 835 mm다.
-- 근거: 사용자 2026-10-27 · HISTORY/2026-10-27-poster-final-decision.md
+- 결정: 제출·인쇄에는 10안(`poster/v10/poster.pdf`)을 쓴다. 종이는 제출 규격 595 × 835 mm다.
+- 근거: 사용자 2026-10-27 · HISTORY/2026-10-27-poster-v10-decision.md (이전 결정: 8안 — 사용자 2026-10-27 · HISTORY/2026-10-27-poster-final-decision.md)
 - 관련 문서: poster/README.md
+
+## D-023 장비망 밖 주소의 로그인은 원점 잡기에만 쓴다
+- 범위: 장비망 밖 주소(`hmi.hypefree.net`)의 로그인과 원점(F-04)
+- 결정: 로그인은 공용 비밀번호 하나로 한다. 로그인하지 않아도 모든 기능을 쓰고, 로그인해야 하는 것은 원점 잡기뿐이다. 밖 주소의 원점은 Worker 한 곳에 두어 그 주소로 연 HMI가 모두 같이 쓰고, 로그인하지 않은 사람이 원점 값을 바꾸지 못하게 Worker에서 막는다(원점 저장은 로그인해야 하고, 원점 복귀는 저장된 원점과 같은 각도만 넘긴다). 장비망 안 화면에는 적용하지 않는다.
+- 근거: 사용자 2026-10-27 · HISTORY/2026-10-27-login-decision.md
+- 관련 문서: docs/cloudflare.md, docs/xml-protocol.md
