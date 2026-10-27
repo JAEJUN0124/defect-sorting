@@ -41,6 +41,7 @@ cloudflared (장비망 안 PC, 밖으로 나가는 연결만 씀)
 - 브라우저 → 서버 메시지는 Worker가 XML로 읽고 다시 써서 넘깁니다 — 서버가 받는 글이 Worker가 검사한 글과 같도록. 읽지 못한 글·바이너리·64KB가 넘는 글은 넘기지 않고 `Error`를 돌려줍니다.
 - 로그인: 비밀번호는 Worker 비밀값 `HMI_PASSWORD`, 쿠키(`hmi_session`, HttpOnly·Secure·SameSite=Strict, 24시간)는 `SESSION_KEY`로 서명만 하고 저장하지 않습니다. 로그인 시도는 한 IP에서 60초에 5번까지입니다(`LOGIN_LIMIT`).
 - 주소는 하나로 둡니다 — `*.workers.dev`·미리 보기 주소는 열지 않습니다 (`wrangler.jsonc`의 `workers_dev`·`preview_urls`).
+- 검색: `/robots.txt`가 모든 경로를 막고(`react/public/robots.txt`), 조작 화면에 `noindex`를 둡니다 (사용자 2026-10-28). 지키는 검색 로봇만 따르는 약속이라 접속을 막지는 못합니다 — 인증서 공개 기록(Certificate Transparency)에 `hmi.hypefree.net`이 실려, 주소를 모아 두드려 보는 로봇은 찾아옵니다.
 - 서버 담당 README는 외부 연결을 VPN이나 인증·TLS를 갖춘 프록시로 제한하라고 합니다 ([server-xml-v1.0.md](server-xml-v1.0.md)). 화면 주소의 Access를 없애면 이 권고와 다르므로 서버 담당에게 알립니다. 터널 주소의 Access(서비스 토큰만)와 Cloudflare의 TLS는 그대로입니다.
 - 비용: 모두 무료 플랜입니다. Zero Trust는 Free 플랜도 결제 정보를 넣어야 하지만 청구되지 않습니다.
 
