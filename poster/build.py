@@ -26,6 +26,7 @@ W, H = 594, 841
 TEXT = {
     'school': '대림대학교',
     'program': '2026 경기도 앵커 사업',
+    'program_v8': '2026 캡스톤 디자인',               # 8안 (사용자 2026-10-27)
     'title': ['불량을 골라내는', '눈과 손'],          # 줄마다 하나 (6안은 1안 파일의 제목을 그대로 쓴다)
     'title_v8': ['불량을 찾는 눈,', '골라내는 손'],   # 8안. 눈(카메라)이 찾고 손(로봇팔)이 고른다는 것이 제목에서 읽히게
     'subtitle': '카메라로 찾고, 로봇팔로 골라내는 불량품 자동 선별 라인',          # 4·5안
@@ -44,11 +45,38 @@ TEXT = {
         'hmi': ('웹 HMI', 'React · 조작 화면'),
         'server': ('서버', '.NET · 공정 제어'),
         'link': '웹소켓 · XML',
+        'video': '영상 · MJPEG',                  # 9안: 카메라 영상은 서버의 HTTP 주소에서 따로 받는다 (D-019)
         'devices': [('컨베이어', '부품 이송'), ('카메라 2대', '탑뷰 · 그리퍼'),
                     ('로봇팔', 'SO-ARM101'), ('리더암', '수동 조작')],
     },
     'department': '스마트소프트웨어학과',
     'members': ['이강현', '전범수', '황재준'],
+    # 9안: 8안에 설명을 더한 안 (사용자 2026-10-27 — 교수 의견 "설명이 부족"). 공정 순서·HMI 문서와 결정에 있는 것만 쓰고,
+    # 팀이 아직 정하지 않은 장치 규칙(긴급정지 때 로봇팔 힘 빼기 등)과 판정 방법은 적지 않는다
+    'lead_v9': ['카메라가 양품과 불량을 가리고, 로봇팔이 불량품만 골라 옮기는 자동 선별 라인입니다.',
+                '작업자는 웹 HMI에서 라인을 켜고 끄며, 카메라 영상과 생산 통계를 봅니다.'],
+    'steps_v9': [                                 # (이름, 두 줄 설명) — docs/line-sequence.md
+        ('이송', ['컨베이어가 부품을', '검사 자리로 옮깁니다']),
+        ('촬영', ['위에서 내려다보는', '카메라가 부품을 찍습니다']),
+        ('판정', ['영상으로 양품과 불량을', '가리고 HMI에 알립니다']),
+        ('분류', ['로봇팔이 불량품을 집어 옮기고,', '양품은 컨베이어가 내보냅니다']),
+    ],
+    'pairs_v9': [                                 # (칸 이름, [(이름, 한 줄)]) — D-003 운전 모드, D-004 · D-007 긴급정지
+        ('운전 모드', [('자동', '이송 · 촬영 · 판정 · 분류를 스스로 되풀이합니다'),
+                      ('수동', '사람이 리더암을 움직이면 로봇팔이 따라 움직입니다')]),
+        ('긴급정지', [('누르면', '컨베이어와 로봇팔을 바로 멈춥니다'),
+                     ('해제', '확인 창을 거쳐 풀고, 원점 복귀 뒤에 다시 시작합니다')]),
+    ],
+    'features_v9': [                              # 웹 HMI 조작 화면 (hmi-web-mockup/README.md). (이름, 보충 두 줄)
+        ('시작 · 정지', ['키 하나로', '켜고 끄기']),
+        ('원점', ['잡기 · 복귀', '수동에서 저장']),
+        ('옮길 부품', ['양품 · 불량품', '중에서 고르기']),
+        ('카메라', ['탑뷰 · 그리퍼', '바꿔 보기']),
+        ('생산 통계', ['검사 · 양품 · 불량', '불량률']),
+        ('장치 연결', ['서버 · 로봇팔', '카메라 · 컨베이어']),
+        ('로그 · 알림', ['고장 · 경고를', '이유와 함께']),
+        ('밖에서 접속', ['웹 주소로 열기', 'Cloudflare 경유']),
+    ],
 }
 
 # 4·5안은 하늘과 바닥의 경계, 그림 크기, 글자 자리만 다르고 그림과 글은 같다.
@@ -524,16 +552,37 @@ V7_W, V7_H = 595, 835              # 7안 종이 크기 (제출 규격). A1보�
 V7_PX = V7_W / 2                   # 7안의 검사 자리 가로 위치. 가운데가 PX(297)인 1안 그림을 여기로 옮긴다
 V7_SCALE = 0.9                     # 원·로봇팔·카메라·부품 크기 (1안 = 1). 원 꼭대기는 1안과 거의 같은 높이에 남는다
 V7_INSPECT_Y = 438                 # 검사 자리 (1안보다 42 위)
-V7_GROUND = V7_INSPECT_Y + 13 * V7_SCALE
 V7_REFLECTION = 0.45               # 바닥에 비친 원의 깊이 (1안 = 1)
+V7_ART = {'scale': V7_SCALE, 'inspect': V7_INSPECT_Y, 'reflection': V7_REFLECTION}   # 그림 자리 (7·8안)
+V1_REACH = 174                     # 1안의 가장 큰 원 반지름. 원은 모두 검사 자리에서 컨베이어에 닿아, 꼭대기는 검사 자리 - 2 × 반지름
 V7_SAFE = (30, 38)                 # 글자 안전 여백 (위아래, 좌우). 1안의 글자가 이미 이 안에 있다
 V7_TITLE = 538                     # 제목 첫 줄 기준선. 줄 간격·설명까지의 거리는 1안과 같다
 V7_STEPS = 670                     # "작동 과정" 기준선
 V7_SYSTEM = 729                    # "시스템 구성" 기준선
 V7_FOOTER = 799                    # 학과·팀원 기준선. 아래 여백은 1안과 같은 36
-V7_TITLES = {                      # 7안 틀로 만드는 안. 그림·크기·설명은 같고 제목만 다르다
-    'v7': TEXT['title'],
-    'v8': TEXT['title_v8'],
+# 8안은 학과·팀원을 맨 아래 줄에서 머리로 올렸다 (사용자 2026-10-27). 로고 옆에 학교 / 학과, 오른쪽에 사업명 / 팀원 두 줄씩.
+V8_HEAD = (63, 86)                 # 머리 두 줄의 기준선. 두 줄 덩어리가 로고(38~96)의 가운데 67에 온다
+# 머리 글자 둘레 8 안에는 별을 두지 않는다 — 팀원 이름 바로 아래(5)의 별 하나가 점처럼 읽혀서.
+# 글자 상자는 브라우저로 잰 값: 왼쪽 두 줄 110~234 × 46~87, 오른쪽 두 줄 406~555 × 52~87
+V8_STAR_CLEAR = [(102, 38, 242, 95), (398, 44, 563, 95)]
+# 빠진 아래 줄 자리: 시스템 구성 상자(이름 기준선 + 7, 높이 32)의 아래 끝을 그 줄의 기준선에 맞춰 아래 여백을 7안과 같게 두고,
+# 늘어난 31을 작동 과정 위·아래 두 틈에 반씩 나눈다 (두 틈은 7안에서도 25 · 23으로 거의 같다)
+V8_SYSTEM = V7_FOOTER - 39
+V8_STEPS = V7_STEPS + (V8_SYSTEM - V7_SYSTEM) / 2
+# 9안: 8안의 머리 · 그림 · 제목 · 시스템 구성을 그대로 쓰되 그림과 제목을 줄이고, 생긴 자리에 설명 칸을 더한다 (v9_content)
+V9_ART = {'scale': 0.68, 'inspect': 353, 'reflection': 0.34}   # 원 꼭대기 353 - 2 × 174 × 0.68 ≈ 116 (머리 아래 20)
+V9_TITLE = (433, 44, 52)           # 제목 첫 줄 기준선, 글자 크기, 줄 간격 (8안 538 · 54 · 64)
+V9_LEAD = (519, 14, 20)            # 소개 두 줄: 첫 줄 기준선, 글자 크기, 줄 간격
+V9_STEPS = 565                     # 작동 과정 (네 단계, 두 줄 설명)
+V9_PAIRS = 637                     # 운전 모드 · 긴급정지
+V9_FEATURES = 692                  # 웹 HMI 주요 기능 (여덟 칸)
+V9_SYSTEM = V8_SYSTEM              # 시스템 구성은 8안 자리 그대로 — 상자 아래 끝 799, 아래 여백 36
+V7_VERSIONS = {                    # 7안 틀로 만드는 안. 그림·크기·설명은 같고 아래 값만 다르다
+    'v7': {'title': TEXT['title']},
+    'v8': {'title': TEXT['title_v8'], 'program': TEXT['program_v8'], 'team_on_top': True,
+           'steps': V8_STEPS, 'system': V8_SYSTEM},
+    'v9': {'title': TEXT['title_v8'], 'program': TEXT['program_v8'], 'team_on_top': True,
+           'art': V9_ART, 'layout': 'v9'},
 }
 
 
@@ -550,15 +599,15 @@ def v1_group(lines, gid):
             return out
 
 
-def v7_shrunk(lines):
-    """1안 그림을 검사 자리를 중심으로 V7_SCALE만큼 줄여 (V7_PX, V7_INSPECT_Y)로 옮긴다."""
-    return [f'<g transform="translate({f(V7_PX)} {f(V7_INSPECT_Y)}) scale({f(V7_SCALE)}) '
+def v7_shrunk(lines, art=V7_ART):
+    """1안 그림을 검사 자리를 중심으로 art['scale']만큼 줄여 (V7_PX, art['inspect'])로 옮긴다."""
+    return [f'<g transform="translate({f(V7_PX)} {f(art["inspect"])}) scale({f(art["scale"])}) '
             f'translate({f(-PX)} {-V1_INSPECT_Y})">', *lines, '</g>']
 
 
-def v7_conveyor():
+def v7_conveyor(art=V7_ART):
     """1안 모양의 컨베이어. 띠는 1안처럼 양옆 여백(40)까지 닿고, 롤러·부품만 줄여 그만큼 더 놓는다."""
-    s, y = V7_SCALE, V7_INSPECT_Y
+    s, y = art['scale'], art['inspect']
     belt, part = 13 * s, 12 * s
     out = ['<g id="line">',
            f'<rect x="40" y="{f(y)}" width="{V7_W - 80}" height="{f(belt)}" rx="{f(belt / 2)}" fill="{STEEL}"/>',
@@ -570,7 +619,9 @@ def v7_conveyor():
     for x in (46.5, V7_W - 46.5):
         out.append(f'<circle cx="{x}" cy="{f(y + belt / 2)}" r="{f(3.2 * s)}" fill="none" stroke="{SHELL}" '
                    f'stroke-opacity=".9" stroke-width="1"/>')
-    for k in range(1, 7):                          # 부품: 1안처럼 42 간격. 검사 자리는 로봇팔이 들어 올려 비어 있다
+    # 부품: 1안처럼 42 간격. 검사 자리는 로봇팔이 들어 올려 비어 있다. 가장 바깥 부품이 7·8안처럼 양끝 롤러 안쪽
+    # (가운데에서 230 안)에 오도록 그림 크기에 맞춰 수를 정한다 — 0.9배면 6개씩, 9안(0.68배)은 8개씩
+    for k in range(1, int(230 / (42 * s)) + 1):
         for x in (V7_PX - 42 * k * s, V7_PX + 42 * k * s):
             out.append(f'<rect x="{f(x - part / 2)}" y="{f(y - part)}" width="{f(part)}" height="{f(part)}" '
                        f'rx="{f(1.2 * s)}" fill="{SHELL}"/>')
@@ -578,50 +629,56 @@ def v7_conveyor():
     return out
 
 
-def v7_stars(lines):
-    """1안의 별. 원이 작아지고 컨베이어가 올라와 새로 드러나는 별 가운데, 원이나 컨베이어에 붙는 것은 뺀다."""
-    reach = 174 * V7_SCALE                         # 1안의 가장 큰 원 반지름
-    cy = V7_INSPECT_Y - reach
+def v7_stars(lines, clear=(), art=V7_ART):
+    """1안의 별. 원이 작아지고 컨베이어가 올라와 새로 드러나는 별 가운데, 원이나 컨베이어에 붙는 것은 뺀다.
+    clear: 별을 두지 않을 곳 (x0, y0, x1, y1) — 8안의 머리 글자 둘레."""
+    reach = V1_REACH * art['scale']
+    cy = art['inspect'] - reach
     out = []
     for line in v1_group(lines, 'stars'):
         m = re.search(r'cx="([\d.]+)" cy="([\d.]+)"', line)
         if m:
             x, y = float(m[1]), float(m[2])
-            if y > V7_INSPECT_Y - 25 or math.hypot(x - V7_PX, y - cy) < reach + 12:
+            if y > art['inspect'] - 25 or math.hypot(x - V7_PX, y - cy) < reach + 12:
+                continue
+            if any(x0 <= x <= x1 and y0 <= y <= y1 for x0, y0, x1, y1 in clear):
                 continue
         out.append(line)
     return out
 
 
-def v7_art(lines):
+def v7_art(lines, clear=(), art=V7_ART):
     """종이 끝까지 닿는 그림. 1안에서 별·원·비친 원·로봇팔을 가져오고, 6안처럼 카메라와 금 간 불량품을 넣는다."""
+    s, y = art['scale'], art['inspect']
+    ground = y + 13 * s                            # 산호 바닥 (컨베이어 아래 끝)
     arm = v1_group(lines, 'arm')
     arm[arm.index(V1_DEFECT)] = '\n'.join(bad_part(PX, 474, 12))
     return [f'<svg viewBox="0 0 {V7_W} {V7_H}" aria-hidden="true">',
             f'<rect width="{V7_W}" height="{V7_H}" fill="{NAVY}"/>',
-            *v7_stars(lines),
-            *v7_shrunk(v1_group(lines, 'glow')),
-            f'<rect y="{f(V7_GROUND)}" width="{V7_W}" height="{f(V7_H - V7_GROUND)}" fill="{CORAL}"/>',
-            f'<g transform="translate({f(V7_PX)} {f(V7_GROUND)}) scale({f(V7_SCALE)} {f(V7_REFLECTION)}) '
+            *v7_stars(lines, clear, art),
+            *v7_shrunk(v1_group(lines, 'glow'), art),
+            f'<rect y="{f(ground)}" width="{V7_W}" height="{f(V7_H - ground)}" fill="{CORAL}"/>',
+            f'<g transform="translate({f(V7_PX)} {f(ground)}) scale({f(s)} {f(art["reflection"])}) '
             f'translate({f(-PX)} {-V1_GROUND})">', *v1_group(lines, 'reflection'), '</g>',
-            f'<g transform="translate({f(V7_PX)} {f(V7_INSPECT_Y)}) scale({f(V7_SCALE)})">', *camera(), '</g>',
-            *v7_shrunk(arm),
-            *v7_conveyor(),
+            f'<g transform="translate({f(V7_PX)} {f(y)}) scale({f(s)})">', *camera(), '</g>',
+            *v7_shrunk(arm, art),
+            *v7_conveyor(art),
             '</svg>']
 
 
-def v7_steps(y):
-    """작동 과정. 세 단계를 나란히: 번호와 이름, 그 아래 한 줄 설명. 단계 사이는 가는 화살표로 잇는다."""
-    steps, gutter = TEXT['steps'], 12
-    width = (V7_W - 80 - 2 * gutter) / 3
+def v7_steps(y, steps=None):
+    """작동 과정. 단계를 나란히: 번호와 이름, 그 아래 설명(한 줄, 9안은 두 줄). 단계 사이는 가는 화살표로 잇는다."""
+    steps, gutter = steps or TEXT['steps'], 12
+    width = (V7_W - 80 - (len(steps) - 1) * gutter) / len(steps)
     badge = y + 16                                 # 번호 원의 가운데 높이
     out = ['<g id="steps">', text(40, y, '작동 과정', 8, 700, INK_SOFT)]
     for i, (name, desc) in enumerate(steps):
         x = 40 + i * (width + gutter)
         out += [circle(NAVY, (0, 0), x + 6.5, badge, 6.5),
                 text(x + 6.5, badge + 3.2, str(i + 1), 9, 700, CORAL, 'middle'),
-                text(x + 17, badge + 4.2, name, 12, 700),
-                text(x, y + 36, desc, 9, 500)]           # 단계 사이가 25쯤 비어 한 줄로 이어 읽히지 않게
+                text(x + 17, badge + 4.2, name, 12, 700)]
+        # 단계 사이가 25쯤 비어 한 줄로 이어 읽히지 않게
+        out += [text(x, y + 36 + 12 * k, line, 9, 500) for k, line in enumerate([desc] if isinstance(desc, str) else desc)]
         if i < len(steps) - 1:
             x0, x1 = x + 48, x + width + gutter - 4
             out += [f'<path d="M{f(x0)} {f(badge)}H{f(x1 - 3)}" stroke="{INK_SOFT}" stroke-width=".5"/>',
@@ -631,8 +688,42 @@ def v7_steps(y):
     return out
 
 
-def v7_system(y):
-    """시스템 구성. 웹 HMI ↔ 서버 ↔ 장치 네 가지. 상자는 선으로만 그어 산호 바닥을 덮지 않는다."""
+def v9_pairs(y):
+    """9안: 운전 모드와 긴급정지 두 칸. 칸마다 이름(굵게)과 한 줄 설명을 두 줄씩."""
+    cols, gutter = TEXT['pairs_v9'], 12
+    width = (V7_W - 80 - (len(cols) - 1) * gutter) / len(cols)
+    out = ['<g id="pairs">']
+    for c, (label, items) in enumerate(cols):
+        x = 40 + c * (width + gutter)
+        out.append(text(x, y, label, 8, 700, INK_SOFT))
+        for k, (name, desc) in enumerate(items):
+            row = y + 17 + 14 * k
+            out += [text(x, row, name, 10.5, 700), text(x + 36, row, desc, 9.5, 500)]
+    out.append('</g>')
+    return out
+
+
+def v9_features(y):
+    """9안: 웹 HMI 주요 기능. 시스템 구성의 장치 칸처럼 상자 하나를 여덟 칸으로 나눈다 — 이름과 보충 두 줄."""
+    items = TEXT['features_v9']
+    top, h = y + 7, 40
+    cell = (V7_W - 80) / len(items)
+    out = ['<g id="features">', text(40, y, '웹 HMI 주요 기능', 8, 700, INK_SOFT),
+           f'<rect x="40" y="{f(top)}" width="{V7_W - 80}" height="{h}" rx="3.5" fill="none" '
+           f'stroke="{NAVY}" stroke-width=".7"/>']
+    for i, (name, notes) in enumerate(items):
+        x = 40 + cell * i
+        if i:
+            out.append(f'<path d="M{f(x)} {f(top + 7)}V{f(top + h - 7)}" stroke="{INK_SOFT}" stroke-width=".4"/>')
+        out.append(text(x + cell / 2, top + 15, name, 10, 700, NAVY, 'middle'))
+        out += [text(x + cell / 2, top + 26 + 8.5 * k, note, 7.5, 500, INK_SOFT, 'middle') for k, note in enumerate(notes)]
+    out.append('</g>')
+    return out
+
+
+def v7_system(y, video=False):
+    """시스템 구성. 웹 HMI ↔ 서버 ↔ 장치 네 가지. 상자는 선으로만 그어 산호 바닥을 덮지 않는다.
+    video(9안)면 웹 HMI ↔ 서버 화살표 위에 웹소켓 · XML, 아래에 영상을 쓴다."""
     s = TEXT['system']
     top, h = y + 7, 32
     mid = top + h / 2
@@ -652,9 +743,12 @@ def v7_system(y):
 
     devices_x, devices_w = 312, V7_W - 40 - 312
     cell = devices_w / len(s['devices'])
+    links = ([text(160, mid - 3.5, s['link'], 7.5, 500, INK_SOFT, 'middle'),
+              text(160, mid + 10, s['video'], 7.5, 500, INK_SOFT, 'middle')] if video
+             else [text(160, mid + 10, s['link'], 7.5, 500, INK_SOFT, 'middle')])
     out = ['<g id="system">', text(40, y, '시스템 구성', 7.5, 700, INK_SOFT),
            box(40, 92), *label(86, *s['hmi']),
-           *arrow(132, 188), text(160, mid + 10, s['link'], 7.5, 500, INK_SOFT, 'middle'),
+           *arrow(132, 188), *links,
            box(188, 92), *label(234, *s['server']),
            *arrow(280, devices_x),
            box(devices_x, devices_w)]
@@ -667,27 +761,65 @@ def v7_system(y):
     return out
 
 
-def v7_content(lines, title):
-    """글자와 도표. viewBox를 안전 여백 안쪽으로 잡아, 좌표는 포스터 단위 그대로 쓰면서 넘침 검사가 여백을 재게 한다."""
+def v7_head(lines, program, team_on_top):
+    """글자 SVG를 열고 학교 마크와 머리 글자를 쓴다. viewBox를 안전 여백 안쪽으로 잡아, 좌표는 포스터 단위 그대로 쓰면서
+    넘침 검사가 여백을 재게 한다. team_on_top(8·9안)이면 학과·팀원을 맨 아래 줄 대신 머리 둘째 줄에 쓴다 —
+    예전 아래 줄처럼 학과는 왼쪽, 팀원은 오른쪽."""
     t = TEXT
     top, side = V7_SAFE
     right = V7_W - 40                              # 오른쪽 맞춤 글자의 끝. 1안처럼 여백 40
     out = [f'<svg viewBox="{side} {top} {V7_W - 2 * side} {V7_H - 2 * top}" font-family="{FONT}">',
-           *v1_group(lines, 'authority-mark'),
-           text(110, 74, t['school'], 20, 700, WHITE),
-           text(right, 74, t['program'], 13.5, 500, WHITE, 'end')]
+           *v1_group(lines, 'authority-mark')]
+    if team_on_top:
+        first, second = V8_HEAD
+        out += [text(110, first, t['school'], 20, 700, WHITE),
+                text(110, second, t['department'], 13.5, 500, WHITE),
+                text(right, first, program, 13.5, 500, WHITE, 'end')]
+        # 팀원 사이는 아래 줄(15에 62)과 같은 비율로 13.5에 56
+        out += [text(right - 56 * i, second, name, 13.5, 500, WHITE, 'end')
+                for i, name in enumerate(reversed(t['members']))]
+    else:
+        out += [text(110, 74, t['school'], 20, 700, WHITE),
+                text(right, 74, program, 13.5, 500, WHITE, 'end')]
+    return out
+
+
+def v7_content(lines, title, program=TEXT['program'], team_on_top=False, steps=V7_STEPS, system=V7_SYSTEM):
+    """7·8안의 글자와 도표: 머리, 제목 두 줄, 한 줄 설명, 작동 과정, 시스템 구성, (7안) 학과·팀원 줄."""
+    t = TEXT
+    right = V7_W - 40
+    out = v7_head(lines, program, team_on_top)
     for i, line in enumerate(title):
         out.append(text(38, V7_TITLE + 64 * i, line, 54, 600, NAVY, spacing=-1.2))
     out.append(text(40, V7_TITLE + 64 + 43, t['description'], 17, 500, NAVY))
-    out += v7_steps(V7_STEPS) + v7_system(V7_SYSTEM)
-    out.append(text(40, V7_FOOTER, t['department'], 13, 500, NAVY))
-    out += [text(right - 62 * i, V7_FOOTER, name, 15, 500, NAVY, 'end')
-            for i, name in enumerate(reversed(t['members']))]
+    out += v7_steps(steps) + v7_system(system)
+    if not team_on_top:
+        out.append(text(40, V7_FOOTER, t['department'], 13, 500, NAVY))
+        out += [text(right - 62 * i, V7_FOOTER, name, 15, 500, NAVY, 'end')
+                for i, name in enumerate(reversed(t['members']))]
     out.append('</svg>')
     return out
 
 
-def v7_html(title=TEXT['title']):
+def v9_content(lines, title, program=TEXT['program'], team_on_top=True):
+    """9안의 글자와 도표: 8안 머리, 줄인 제목, 소개 두 줄, 작동 과정 네 단계, 운전 모드 · 긴급정지, 웹 HMI 주요 기능, 시스템 구성."""
+    t = TEXT
+    out = v7_head(lines, program, team_on_top)
+    y, size, gap = V9_TITLE
+    for i, line in enumerate(title):                # 글자 사이는 8안(54에 -1.2)과 같은 비율
+        out.append(text(38, y + gap * i, line, size, 600, NAVY, spacing=-1.2 * size / 54))
+    y, size, gap = V9_LEAD
+    out += [text(40, y + gap * i, line, size, 500, NAVY) for i, line in enumerate(t['lead_v9'])]
+    out += (v7_steps(V9_STEPS, t['steps_v9']) + v9_pairs(V9_PAIRS) + v9_features(V9_FEATURES)
+            + v7_system(V9_SYSTEM, video=True))
+    out.append('</svg>')
+    return out
+
+
+def v7_html(title=TEXT['title'], art=V7_ART, layout='v7', **options):
+    """art는 그림 자리(V7_ART · V9_ART), layout 'v9'면 9안 본문. options는 본문의 program · team_on_top · steps · system
+    (V7_VERSIONS)."""
+    body = v9_content if layout == 'v9' else v7_content
     lines = (HERE / 'v1' / 'poster.svg').read_text(encoding='utf-8').split('\n')
     top, side = V7_SAFE
     return '\n'.join([
@@ -704,9 +836,9 @@ def v7_html(title=TEXT['title']):
         '.poster > svg { display: block; width: 100%; height: 100%; overflow: visible }',
         '</style>',
         '<div class="page">',
-        *v7_art(lines),
+        *v7_art(lines, V8_STAR_CLEAR if options.get('team_on_top') else (), art),
         '<div class="poster">',
-        *v7_content(lines, title),
+        *body(lines, title, **options),
         '</div>',
         '</div>',
     ]) + '\n'
@@ -767,14 +899,14 @@ def shoot(print_html, shot_html, out, window=(1188, 1682)):
 
 
 def main():
-    names = [*LAYOUTS, 'v6', *V7_TITLES]
+    names = [*LAYOUTS, 'v6', *V7_VERSIONS]
     name = sys.argv[1] if len(sys.argv) > 1 else LATEST
     if name not in names:
         raise SystemExit(f'안 이름은 {", ".join(names)} 중 하나입니다.')
     out = HERE / name if len(sys.argv) > 1 else HERE
     out.mkdir(exist_ok=True)
-    if name in V7_TITLES:                          # 7안 틀로 만드는 안은 HTML이 원본이다
-        html = v7_html(V7_TITLES[name])
+    if name in V7_VERSIONS:                        # 7안 틀로 만드는 안은 HTML이 원본이다
+        html = v7_html(**V7_VERSIONS[name])
         (out / 'poster.html').write_text(html, encoding='utf-8')
         if '--html' not in sys.argv:
             render_html(html, out, V7_W, V7_H)
