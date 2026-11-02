@@ -1,0 +1,1052 @@
+{
+ "note": "이 파일은 timeline.mjs가 만든다. 고치려면 timeline.mjs를 고치고 node promo/v2/timeline.mjs를 다시 돌린다.",
+ "fps": 30,
+ "bpm": 120,
+ "duration": 16,
+ "sections": [
+  {
+   "id": "hook",
+   "start": 0,
+   "end": 2,
+   "desc": "부품이 박마다 들어오고 판이 양품·양품·양품을 띄우다가 1.5초에 노란 불량. 2초까지 정적"
+  },
+  {
+   "id": "see",
+   "start": 2,
+   "end": 4,
+   "desc": "카메라가 / 본다. 시선이 불량에 모이고 훑는 선이 지나간 뒤 3초에 노란 검출 상자가 잠긴다"
+  },
+  {
+   "id": "judge",
+   "start": 4,
+   "end": 6,
+   "desc": "서버가 / 판단한다. 카메라→서버로 데이터가 올라갔다가(4.0~4.8) 5초에 판정이 돌아와 금이 노랗게 그려진다"
+  },
+  {
+   "id": "pick",
+   "start": 6,
+   "end": 8,
+   "desc": "로봇팔이 / 골라낸다. 서버→로봇팔 신호(6.0), 팔이 뻗어 7초에 집고 들어 올려 7.75초에 불량함에 놓는다"
+  },
+  {
+   "id": "restore",
+   "start": 8,
+   "end": 10,
+   "desc": "다시 박마다 양품 네 번. 리듬이 돌아온다"
+  },
+  {
+   "id": "hmi",
+   "start": 10,
+   "end": 12,
+   "desc": "웹 HMI로 / 운전한다. 10.4초부터 장면이 웹 HMI 카메라 화면 안으로 줄어들고 판은 위 제목이 된다"
+  },
+  {
+   "id": "end",
+   "start": 12,
+   "end": 16,
+   "desc": "12초 타격에 끝 판이 나타나 13초에 \"불량을 찾는 눈, 골라내는 손\"이 내려앉는다. 13.5초 학교·팀. 16초 끝"
+  }
+ ],
+ "cues": [
+  {
+   "t": 0,
+   "id": "open",
+   "desc": "첫 프레임부터: 첫 판정과 함께 또렷한 타격"
+  },
+  {
+   "t": 0,
+   "id": "verdict_ok",
+   "every": 0.5,
+   "until": 1,
+   "desc": "양품 판정 소리 (짧고 밝은 두 음)"
+  },
+  {
+   "t": 1.5,
+   "id": "verdict_ng",
+   "desc": "불량 판정: 어긋난 음, 여기서 박자가 끊김"
+  },
+  {
+   "t": 1.5,
+   "id": "silence",
+   "until": 2,
+   "desc": "정적 (아주 낮은 긴장음만)"
+  },
+  {
+   "t": 2,
+   "id": "see",
+   "desc": "카메라 초점 소리"
+  },
+  {
+   "t": 2.4,
+   "id": "scan",
+   "until": 3,
+   "desc": "훑는 선"
+  },
+  {
+   "t": 3,
+   "id": "lock",
+   "desc": "검출 상자 잠김"
+  },
+  {
+   "t": 4,
+   "id": "judge",
+   "desc": "판단 시작"
+  },
+  {
+   "t": 4,
+   "id": "data_up",
+   "until": 4.8,
+   "desc": "카메라→서버 데이터 (빠른 짧은 음들)"
+  },
+  {
+   "t": 5,
+   "id": "data_back",
+   "desc": "판정이 돌아옴, 금이 노랗게 그려짐"
+  },
+  {
+   "t": 6,
+   "id": "pick",
+   "desc": "서버→로봇팔 신호"
+  },
+  {
+   "t": 6,
+   "id": "servo",
+   "until": 6.95,
+   "desc": "팔이 뻗음 (서보)"
+  },
+  {
+   "t": 7,
+   "id": "clamp",
+   "desc": "집음"
+  },
+  {
+   "t": 7,
+   "id": "lift",
+   "until": 7.7,
+   "desc": "들어 올려 옮김"
+  },
+  {
+   "t": 7.75,
+   "id": "drop",
+   "desc": "불량함에 떨어짐 (둔탁한 소리)"
+  },
+  {
+   "t": 8,
+   "id": "groove",
+   "desc": "본 비트 시작: 리듬이 돌아옴"
+  },
+  {
+   "t": 8,
+   "id": "verdict_ok",
+   "every": 0.5,
+   "until": 9.5,
+   "desc": "양품 판정 네 번"
+  },
+  {
+   "t": 10,
+   "id": "hmi",
+   "desc": "웹 HMI"
+  },
+  {
+   "t": 10.4,
+   "id": "zoom_out",
+   "until": 10.9,
+   "desc": "장면이 화면 안으로 줄어듦"
+  },
+  {
+   "t": 11.5,
+   "id": "riser",
+   "until": 12,
+   "desc": "끝으로 차오름"
+  },
+  {
+   "t": 12,
+   "id": "hit",
+   "desc": "가장 큰 타격, 끝 판이 나타남"
+  },
+  {
+   "t": 13,
+   "id": "title",
+   "desc": "제목이 다 내려앉음: 마무리 화음"
+  },
+  {
+   "t": 13.5,
+   "id": "credits",
+   "desc": "학교·팀 이름 (부드러운 소리)"
+  },
+  {
+   "t": 15.5,
+   "id": "fade",
+   "until": 16,
+   "desc": "16.0에 무음"
+  }
+ ],
+ "lands": [
+  0,
+  0.5,
+  1,
+  1.5,
+  8,
+  8.5,
+  9,
+  9.5,
+  10.5,
+  11,
+  11.5
+ ],
+ "flips_note": "판의 낱장이 넘어가 부딪히는 때. last = 그 칸의 마지막(제 글자에 닿음), tone = ok/ng, final = 끝 판(가로판 기준. 세로판은 칸 수가 달라 개수만 조금 다름)",
+ "flips": [
+  {
+   "t": -0.23,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": -0.185,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": -0.17,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": -0.155,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": -0.125,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": -0.11,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": -0.095,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": -0.08,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": -0.05,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": -0.02,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 0.5,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 0.53,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 0.56,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 0.59,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.03,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.06,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.09,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.425,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.44,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.455,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.485,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.5,
+   "last": true,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 1.515,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 1.53,
+   "last": true,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 1.56,
+   "last": true,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 1.59,
+   "last": true,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 1.85,
+   "last": false,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 1.91,
+   "last": false,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 1.925,
+   "last": false,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 1.955,
+   "last": false,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 1.985,
+   "last": false,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 2,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 2.015,
+   "last": false,
+   "tone": "ng",
+   "final": false
+  },
+  {
+   "t": 2.03,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 2.06,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 2.09,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 3.85,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 3.88,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 3.925,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 3.94,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 3.955,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 3.985,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 4,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 4.015,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 4.03,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 4.06,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 4.09,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 5.91,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 5.925,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 5.955,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 5.985,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 6,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 6.03,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 6.06,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 6.09,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 7.925,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 7.94,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 7.955,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 7.985,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 8,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 8.015,
+   "last": false,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 8.03,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 8.06,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 8.09,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 8.5,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 8.53,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 8.56,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 8.59,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.03,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.06,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.09,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.5,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.53,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.56,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.59,
+   "last": true,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.85,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.88,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.925,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.94,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.955,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 9.985,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 10,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 10.015,
+   "last": false,
+   "tone": "ok",
+   "final": false
+  },
+  {
+   "t": 10.03,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 10.06,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 10.09,
+   "last": true,
+   "tone": null,
+   "final": false
+  },
+  {
+   "t": 12.625,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.669,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.7,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.735,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.744,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.766,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.775,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.788,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.797,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.81,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.819,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.832,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.841,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.85,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.863,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.872,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.876,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.885,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.894,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.907,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.916,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.925,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.929,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.938,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.947,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.951,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.96,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.969,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.973,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.982,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.991,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 12.995,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.004,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.013,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.022,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.026,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.035,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.044,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.048,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.057,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.066,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.07,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.079,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.088,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.101,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.11,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.123,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.132,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.145,
+   "last": false,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.154,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.176,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.198,
+   "last": true,
+   "tone": null,
+   "final": true
+  },
+  {
+   "t": 13.22,
+   "last": true,
+   "tone": null,
+   "final": true
+  }
+ ]
+}

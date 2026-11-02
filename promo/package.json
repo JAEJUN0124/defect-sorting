@@ -1,0 +1,14 @@
+{
+  "name": "defect-sorting-promo",
+  "private": true,
+  "type": "module",
+  "description": "불량품 선별 프로젝트 홍보 영상 (캔버스로 그려 헤드리스 크롬으로 한 프레임씩 뽑고 ffmpeg로 묶는다)",
+  "scripts": {
+    "render": "node render.mjs",
+    "render:wide": "node render.mjs --format wide",
+    "render:tall": "node render.mjs --format tall"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

@@ -60,6 +60,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "hmi-web-mockup/cloudflare", "run", "dev"],
       "port": 8787
+    },
+    {
+      "name": "promo-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["promo/tools/serve.mjs", "5180"],
+      "port": 5180
     }
   ]
 }

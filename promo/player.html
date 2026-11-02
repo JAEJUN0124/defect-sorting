@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>홍보 영상 재생기</title>
+<style>
+  @font-face { font-family: 'IBM Plex Sans KR'; font-weight: 400; src: url('../hmi-web-mockup/css/fonts/IBMPlexSansKR-Regular.woff2') format('woff2'); }
+  @font-face { font-family: 'IBM Plex Sans KR'; font-weight: 600; src: url('../hmi-web-mockup/css/fonts/IBMPlexSansKR-SemiBold.woff2') format('woff2'); }
+  html, body { margin: 0; background: #02060f; color: #ffebe6; font: 14px 'Noto Sans KR', sans-serif; }
+  body.render { overflow: hidden; }
+  canvas { display: block; }
+  body:not(.render) canvas { max-width: 100vw; max-height: calc(100vh - 56px); margin: 0 auto; }
+  .bar { display: flex; gap: 12px; align-items: center; padding: 10px 16px; }
+  .bar input[type=range] { flex: 1; }
+  .bar button { font: inherit; padding: 4px 12px; }
+  body.render .bar { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="bar">
+  <button id="play">재생</button>
+  <input id="scrub" type="range" min="0" max="18" step="0.0333" value="0">
+  <span id="time">0.00</span>
+  <a id="other" style="color:inherit"></a>
+  <a id="version" style="color:inherit"></a>
+</div>
+<audio id="audio" preload="auto"></audio>
+<script type="module">
+// 판(버전)마다 장면 v<n>/scene.js와 소리 out/v<n>/soundtrack.wav가 따로 있다. ?v=v1처럼 고른다
+const params = new URLSearchParams(location.search);
+const VERSIONS = ['v1', 'v2', 'v3'];
+const version = VERSIONS.includes(params.get('v')) ? params.get('v') : VERSIONS[VERSIONS.length - 1];
+const { createScene, DURATION } = await import(`./${version}/scene.js`);
+document.getElementById('audio').src = `out/${version}/soundtrack.wav`;
+document.getElementById('scrub').max = DURATION;
+const format = params.get('format') === 'tall' ? 'tall' : 'wide';
+const render = params.has('render');
+const [W, H] = format === 'tall' ? [1080, 1920] : [1920, 1080];
+const FPS = 30;
+if (render) document.body.classList.add('render');
+
+const canvas = document.getElementById('c');
+canvas.width = W;
+canvas.height = H;
+const ctx = canvas.getContext('2d', { willReadFrequently: render });
+
+// 학교 마크: SVG의 currentColor를 원하는 색으로 바꿔 그림으로 쓴다
+const markSvg = await (await fetch('../poster/assets/daelim-authority-mark.svg')).text();
+async function loadMark(color) {
+  const blob = new Blob([markSvg.replaceAll('currentColor', color)], { type: 'image/svg+xml' });
+  const img = new Image();
+  img.src = URL.createObjectURL(blob);
+  await img.decode();
+  return img;
+}
+await Promise.all([
+  document.fonts.load('900 100px "Noto Sans KR"'),
+  document.fonts.load('500 30px "Noto Sans KR"'),
+  document.fonts.load('600 20px "IBM Plex Sans KR"'),
+  document.fonts.load('400 20px "IBM Plex Sans KR"'),
+]);
+const scene = createScene({ ctx, W, H, format, assets: { mark: await loadMark('#0095C8'), markLight: await loadMark('#E4E7EA') } });
+
+// 필름 그레인과 디더: 그라디언트 띠를 없애고 화면에 질감을 준다. 프레임마다 다른 씨앗
+function grain(data, frame, amount) {
+  let s = (frame * 2654435761) >>> 0;
+  for (let i = 0; i < data.length; i += 4) {
+    s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
+    const n = ((s >>> 0) / 4294967296 - 0.5) * amount;
+    data[i] += n; data[i + 1] += n; data[i + 2] += n;
+  }
+}
+
+// 한 프레임: 셔터가 열린 동안(프레임 간격의 shutter 비율)의 여러 시각을 평균해 모션 블러를 만든다
+let acc = null;
+function renderFrame(i, samples = 8, shutter = 0.5) {
+  if (samples <= 1) {
+    scene.draw(i / FPS);
+  } else {
+    acc ??= new Float32Array(W * H * 4);
+    acc.fill(0);
+    for (let s = 0; s < samples; s++) {
+      const dt = ((s + 0.5) / samples - 0.5) * shutter;
+      scene.draw((i + dt) / FPS);
+      const d = ctx.getImageData(0, 0, W, H).data;
+      for (let k = 0; k < d.length; k++) acc[k] += d[k];
+    }
+    const img = ctx.createImageData(W, H);
+    const out = new Float32Array(acc.length);
+    for (let k = 0; k < acc.length; k++) out[k] = acc[k] / samples;
+    grain(out, i, 4);
+    for (let k = 0; k < out.length; k++) img.data[k] = out[k];
+    ctx.putImageData(img, 0, 0);
+    return canvas.toDataURL('image/png');
+  }
+  const img = ctx.getImageData(0, 0, W, H);
+  const f = Float32Array.from(img.data);
+  grain(f, i, 4);
+  for (let k = 0; k < f.length; k++) img.data[k] = f[k];
+  ctx.putImageData(img, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+window.__render = { W, H, FPS, frames: Math.round(DURATION * FPS), renderFrame };
+window.__ready = true;
+
+if (!render) {
+  // 미리보기: 소리와 함께 재생하고, 막대로 아무 시각이나 본다
+  const audio = document.getElementById('audio');
+  const scrub = document.getElementById('scrub');
+  const time = document.getElementById('time');
+  const play = document.getElementById('play');
+  const other = document.getElementById('other');
+  other.href = `?v=${version}&format=${format === 'tall' ? 'wide' : 'tall'}`;
+  const ver = document.getElementById('version');
+  const next = VERSIONS[(VERSIONS.indexOf(version) + 1) % VERSIONS.length];
+  ver.href = `?v=${next}&format=${format}`;
+  ver.textContent = `${next} 보기 (지금 ${version})`;
+  other.textContent = format === 'tall' ? '가로판 보기' : '세로판 보기';
+  let playing = false, t0 = 0, start = 0;
+  const show = t => { scene.draw(t); time.textContent = t.toFixed(2); scrub.value = t; };
+  play.onclick = () => {
+    playing = !playing;
+    play.textContent = playing ? '멈춤' : '재생';
+    if (playing) {
+      if (+scrub.value >= DURATION - 0.05) scrub.value = 0;
+      t0 = +scrub.value; start = performance.now();
+      audio.currentTime = t0; audio.play().catch(() => {});
+      requestAnimationFrame(tick);
+    } else audio.pause();
+  };
+  function tick() {
+    if (!playing) return;
+    const t = audio.paused || audio.readyState < 2 ? t0 + (performance.now() - start) / 1000 : audio.currentTime;
+    if (t >= DURATION) { playing = false; play.textContent = '재생'; show(DURATION - 0.001); return; }
+    show(t);
+    requestAnimationFrame(tick);
+  }
+  scrub.oninput = () => { if (playing) play.onclick(); show(+scrub.value); };
+  addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); play.onclick(); } });
+  show(+(params.get('t') || 0));
+}
+</script>
+</body>
+</html>
