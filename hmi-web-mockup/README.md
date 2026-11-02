@@ -70,7 +70,7 @@ HMI 화면을 서버 담당의 메인 서버가 직접 내주게 하면, 화면�
 python hmi-web-mockup/tools/make-server-bundle.py hmi-main-server.zip
 ```
 
-- `wwwroot/`에는 React 조작 화면(`index.html`·`assets/`), 점검 페이지(`tools/`)와 점검 페이지가 읽는 `js/`·`css/`·`config/`가 들어갑니다. 시험·개발 도구와 React 소스는 빠집니다.
+- `wwwroot/`에는 React 조작 화면(`index.html`·`assets/`), 점검 페이지(`tools/`)와 점검 페이지가 읽는 `js/`·`css/`(글꼴 파일 `css/fonts/` 포함)·`config/`가 들어갑니다. 시험·개발 도구와 React 소스는 빠집니다.
 - 조작 화면은 주소 뒤에 아무것도 붙이지 않아도 화면을 내준 서버의 `/ws/hmi`에 붙습니다 (https면 `wss`). 점검 페이지용 `js/config.js`도 메인 서버용으로 바뀝니다(`useMock: false`, `wsUrl: 'auto'`).
 - 이 구성을 시험용 서버로 흉내 내려면 빌드한 뒤 `python hmi-web-mockup/tests/xml-server.py 5091 --simulation --static hmi-web-mockup/react/dist`를 띄우고 `http://localhost:5091/`을 엽니다 (미리보기 설정 `xml-server-hosting`).
 
@@ -200,7 +200,8 @@ React 화면 자체(`react/src/`)는 자동 시험이 없고 브라우저로 확
 | `react/` | 조작 화면 (React 19 + Vite). `index.html` 뼈대와 테마, `src/App.jsx` 화면과 동작, `src/Camera.jsx` 영상 자리, `src/ConfirmDialog.jsx` 확인 창, `src/LogWindow.jsx` 로그 창, `src/Icons.jsx` 아이콘 |
 | `react/design-demos/` | 고르지 않은 디자인 목업 3안(1안 레일 · 2안 콘솔 · 3안 세 칸)과 비교 쪽. 2026-11-02 지금 화면을 그대로 쓰기로 해 기록으로만 남김. 조작 화면(`App.jsx`)은 그대로 쓰고 배치·색·글꼴 CSS만 덧씌워서, 조작 화면이 바뀌면 어긋날 수 있음 (개발 서버 전용) |
 | `react/src/legacy.js` · `react/src/server-defaults.js` | 아래 `js/` 파일을 순서대로 불러옴 · 빌드한 화면의 서버 기본값(화면을 내준 서버) |
-| `css/base.css` | 조작 화면과 점검 페이지가 같이 쓰는 색·글자·간격 토큰과 키·표시등 |
+| `css/base.css` | 조작 화면과 점검 페이지가 같이 쓰는 글꼴 정의, 색·글자·간격 토큰과 키·표시등 |
+| `css/fonts/` | 글꼴 IBM Plex Sans KR 400·600 (IBM 공식 woff2, SIL OFL 1.1 — `LICENSE.txt`). 인터넷이 없는 장비망에서도 같은 글꼴로 보이게 저장소에 넣어 둠 |
 | `css/hmi.css` · `css/tools.css` | 조작 화면 · 점검 페이지 배치 |
 | `js/config.js` | 서버 주소·형식(XML/JSON), 가짜 서버 사용 여부, 카메라, 개발 모드 |
 | `config/robot.js` | 로봇팔 키트 값: 팔·서보·전원 기준·경고 기준·관절 단위·비상정지 안내 |

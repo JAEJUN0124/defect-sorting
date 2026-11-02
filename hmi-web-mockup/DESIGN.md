@@ -37,7 +37,7 @@
 
 ## 3. 글꼴
 
-- 제목·본문: IBM Plex Sans KR 400·600 (Google Fonts). 받지 못하면 Malgun Gothic → Apple SD Gothic Neo
+- 제목·본문: IBM Plex Sans KR 400·600. 글꼴 파일은 `css/fonts/`에 있어 인터넷 없이도 나온다 (IBM 공식 woff2, SIL OFL 1.1). 파일을 못 읽으면 Malgun Gothic → Apple SD Gothic Neo
 - 크기 단계: 14 / 16 / 21 / 36px
 - 숫자(통계·각도·로그 시각)는 `font-variant-numeric: tabular-nums`
 - 한글은 낱말 단위로 줄을 바꾼다 (`word-break: keep-all`)
@@ -74,3 +74,4 @@
 | 줄어든 움직임 설정이면 긴급정지 눌림의 크기 전환을 끔 | my-design 품질 하한 후보(prefers-reduced-motion). 깜빡임·창 열기는 이미 지키고 있었다 | 2026-11-02 |
 | 새 방향 목업 3안(1안 레일 · 2안 콘솔 · 3안 세 칸)을 `react/design-demos/`에 만들어 비교함 | 같은 조작 화면 코드에 배치·색·글꼴만 바꿔 기능이 빠지지 않게 했다 | 2026-11-02 |
 | 목업 3안을 쓰지 않고 지금 화면(왼쪽 조작반 + 오른쪽 보기)을 그대로 씀. 목업은 고르지 않은 견본으로 `react/design-demos/`에 남김 | 네 화면을 상태 11가지와 라이트·다크로 나란히 비교한 뒤 사용자가 고름 (이유는 따로 말하지 않음) | 2026-11-02 |
+| 글꼴 파일(IBM Plex Sans KR 400·600 woff2, 두 파일 약 870KB)을 `css/fonts/`에 넣고 Google Fonts 링크를 없앰 (조작 화면 · 점검 페이지) | 장비망에 인터넷이 없으면 맑은 고딕으로 바뀌고 글자 폭도 달라졌다. 화면이 바깥 서버에 기대지 않게 한다 (사용자 2026-11-02) | 2026-11-02 |

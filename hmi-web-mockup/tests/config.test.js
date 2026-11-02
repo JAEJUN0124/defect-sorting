@@ -73,6 +73,11 @@ test('make-server-bundle.py: wwwroot/에 React 조작 화면과 점검 페이지
   assert.match(index, /<div id="root">/); // 조작 화면은 React 빌드
   assert.ok(names.some((n) => /^wwwroot\/assets\/.+\.js$/.test(n)));
   ['tools/server-check.html', 'tools/server-check.js', 'tools/devices.html', 'js/config.js', 'js/xml.js', 'css/base.css'].forEach((f) => assert.ok(names.includes('wwwroot/' + f), f));
+  // 글꼴은 묶음 안의 파일로 — 인터넷이 없는 장비망에서도 같은 글꼴 (사용자 2026-11-02)
+  ['IBMPlexSansKR-Regular', 'IBMPlexSansKR-SemiBold'].forEach((font) => {
+    assert.ok(names.some((n) => new RegExp('^wwwroot/assets/' + font + '-.+\\.woff2$').test(n)), font + ' (조작 화면)');
+    assert.ok(names.includes('wwwroot/css/fonts/' + font + '.woff2'), font + ' (점검 페이지)');
+  });
   ['tools/dev-server.py', 'tools/make-server-bundle.py'].forEach((f) => assert.ok(!names.includes('wwwroot/' + f), f));
   assert.ok(!names.some((n) => n.startsWith('wwwroot/tests/') || n.startsWith('wwwroot/react/')));
   const cfg = loadConfig('http://192.168.219.101:8000/', config);
@@ -103,6 +108,8 @@ test('make-server-bundle.py --dir: wwwroot/ 내용을 폴더에 씀(README 빼�
     assert.match(fs.readFileSync(path.join(site, 'index.html'), 'utf8'), /<meta name="robots" content="noindex, nofollow">/);
     assert.ok(files.some((f) => /^assets\/.+\.js$/.test(f)));
     ['tools/server-check.html', 'tools/devices.html', 'js/config.js', 'js/xml.js', 'css/base.css'].forEach((f) => assert.ok(files.includes(f), f));
+    // 글꼴을 인터넷(Google Fonts)에서 받지 않는다 — 묶음 안의 글꼴 파일을 쓴다
+    ['index.html', 'tools/server-check.html', 'tools/devices.html'].forEach((f) => assert.doesNotMatch(fs.readFileSync(path.join(site, f), 'utf8'), /fonts\.googleapis\.com/, f));
     assert.ok(!files.includes('README-server.md'));
     assert.ok(!files.some((f) => f.startsWith('tests/') || f.startsWith('react/') || f.endsWith('.py')));
     // Cloudflare에 올리면 점검 페이지도 같은 주소의 /ws/hmi에 붙는다 (Worker가 터널로 넘김)

@@ -11,6 +11,21 @@
    화면별 배치는 hmi.css(조작 화면), tools.css(점검 페이지)에 있다.
    ========================================================= */
 
+/* 글꼴: IBM Plex Sans KR 400 · 600. 인터넷이 없는 장비망에서도 같은 글꼴로 보이게 파일을 fonts/에 넣어 둔다 (사용자 2026-11-02).
+   IBM 공식 @ibm/plex-sans-kr 1.1.0의 woff2 그대로, SIL OFL 1.1 (fonts/LICENSE.txt). 파일을 못 읽으면 --font의 다음 글꼴 */
+@font-face {
+  font-family: 'IBM Plex Sans KR';
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/IBMPlexSansKR-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans KR';
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/IBMPlexSansKR-SemiBold.woff2') format('woff2');
+}
+
 :root {
   /* 바탕 */
   --c-bg: #E9EBED;          /* 보기 영역 */

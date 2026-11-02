@@ -60,18 +60,27 @@ def server_config(text):
 
 
 def tool_files():
-    """점검 페이지와 그 페이지가 읽는 파일 (../js/…, ../css/…, ../config/…, 같은 폴더의 .js)"""
+    """점검 페이지와 그 페이지가 읽는 파일 (../js/…, ../css/…, ../config/…, 같은 폴더의 .js, CSS가 url()로 읽는 글꼴)"""
     files = set()
+
+    def add(base, ref):
+        if ref.startswith(("http:", "https:", "data:", "#")) or ref.endswith(".html"):
+            return
+        rel = os.path.normpath(os.path.join(os.path.dirname(base), ref)).replace(os.sep, "/")
+        if not rel.startswith("..") and os.path.isfile(os.path.join(ROOT, rel)):
+            files.add(rel)
+
     for page in TOOL_PAGES:
         files.add(page)
         with open(os.path.join(ROOT, page), encoding="utf-8") as f:
             html = f.read()
         for ref in re.findall(r'(?:src|href)="([^"]+)"', html):
-            if ref.startswith(("http:", "https:", "#")) or ref.endswith(".html"):
-                continue
-            rel = os.path.normpath(os.path.join(os.path.dirname(page), ref)).replace(os.sep, "/")
-            if not rel.startswith("..") and os.path.isfile(os.path.join(ROOT, rel)):
-                files.add(rel)
+            add(page, ref)
+    for sheet in sorted(f for f in files if f.endswith(".css")):
+        with open(os.path.join(ROOT, sheet), encoding="utf-8") as f:
+            css = f.read()
+        for ref in re.findall(r"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)", css):
+            add(sheet, ref)
     return sorted(files)
 
 
