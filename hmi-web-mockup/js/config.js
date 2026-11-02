@@ -14,10 +14,6 @@ window.HMI_CONFIG = {
   wsUrl: 'ws://localhost:5080/ws/hmi',
   apiBase: 'http://localhost:8000/api', // server.format이 'json'일 때만 씀
 
-  // 개발 단계 전용 표시(장치 연결 상태, 임시 원점값 안내). 배포할 때 false.
-  // 주소 뒤에 ?dev=0 또는 ?dev=1 을 붙이면 이 값보다 우선합니다.
-  devMode: true,
-
   // 늘 켜짐으로 보일 장치. 서버가 끊김이라고 보내도 장치 연결 줄에 켜짐으로 보이고 "항상 켜짐"이라고 씁니다.
   // 컨베이어가 늦어져 그동안 다른 일을 먼저 진행합니다 (사용자 2026-10-19). 컨베이어를 붙이면 []로 되돌립니다.
   // 주소 뒤에 ?alwaysOn=conveyor(쉼표로 여럿) 또는 ?alwaysOn=(비움)을 붙이면 이 값보다 우선합니다.
@@ -91,9 +87,6 @@ window.HMI_CONFIG = {
 (function () {
   const cfg = window.HMI_CONFIG;
   const params = new URLSearchParams(location.search);
-
-  const dev = params.get('dev');
-  if (dev === '0' || dev === '1') cfg.devMode = dev === '1';
 
   // 시험할 때 설정 파일을 고치지 않고 서버를 바꿔 끼운다: ?mock=0&ws=ws://서버:5080/ws/hmi
   //   예전 JSON 서버: ?mock=0&format=json&api=http://서버:8000/api&ws=ws://서버:8000/ws&push=socketio

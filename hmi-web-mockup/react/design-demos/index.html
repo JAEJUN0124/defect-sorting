@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>조작 화면 목업 3안</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+  <style>
+    /* 비교용 쪽. 색·글자는 조작 화면의 base.css 값을 그대로 쓴다 */
+    :root {
+      --c-bg: #E9EBED; --c-plate: #DADDE1; --c-key: #F7F8F9; --c-ink: #1C2024; --c-ink-2: #555D66; --c-line: #C3C9CF;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --c-bg: #262C31; --c-plate: #1E2326; --c-key: #343C42; --c-ink: #E4E7EA; --c-ink-2: #B3BBC2; --c-line: #424A51; color-scheme: dark; }
+    }
+    :root[data-theme="dark"] { --c-bg: #262C31; --c-plate: #1E2326; --c-key: #343C42; --c-ink: #E4E7EA; --c-ink-2: #B3BBC2; --c-line: #424A51; color-scheme: dark; }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 32px 48px;
+      background: var(--c-bg);
+      color: var(--c-ink);
+      font: 400 16px/1.5 'IBM Plex Sans KR', 'Malgun Gothic', sans-serif;
+      word-break: keep-all;
+    }
+    h1, h2, p, ul, table { margin: 0; }
+    h1 { font-size: 36px; font-weight: 600; line-height: 1.2; }
+    h2 { font-size: 21px; font-weight: 600; line-height: 1.3; }
+    a { color: inherit; }
+    :focus-visible { outline: 3px solid var(--c-ink); outline-offset: 3px; }
+
+    .head { display: grid; gap: 12px; max-width: 72ch; }
+    .head p { color: var(--c-ink-2); }
+    .theme { display: flex; gap: 8px; margin-top: 4px; }
+    .theme a {
+      display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px;
+      border: 1px solid var(--c-line); border-radius: 8px; text-decoration: none; font-weight: 600;
+    }
+    .theme a[aria-current="true"] { background: var(--c-key); border: 2px solid var(--c-ink); }
+
+    .opts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 32px 24px;
+      margin-top: 32px;
+    }
+    .opt { display: grid; gap: 12px; align-content: start; }
+    .opt__title { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+    .opt__title a { font-size: 14px; font-weight: 600; white-space: nowrap; }
+    .opt ul { padding-left: 20px; color: var(--c-ink-2); font-size: 14px; }
+    .opt li + li { margin-top: 4px; }
+    .opt b { color: var(--c-ink); font-weight: 600; }
+
+    /* 1440×900 화면을 칸 폭에 맞게 줄여 보인다 */
+    .frame {
+      position: relative;
+      aspect-ratio: 1440 / 900;
+      overflow: hidden;
+      border: 1px solid var(--c-line);
+      border-radius: 4px;
+      background: var(--c-plate);
+    }
+    .frame iframe {
+      position: absolute; top: 0; left: 0;
+      width: 1440px; height: 900px; border: 0;
+      transform-origin: 0 0;
+      transform: scale(var(--k, .4));
+    }
+
+    .check { margin-top: 48px; display: grid; gap: 12px; }
+    .check p { color: var(--c-ink-2); max-width: 80ch; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; min-width: 880px; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--c-line); text-align: left; vertical-align: top; }
+    th { font-weight: 600; }
+    td:first-child { font-weight: 600; white-space: nowrap; }
+
+    @media (max-width: 959px) {
+      body { padding: 24px 16px 40px; }
+      .opts { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header class="head">
+    <h1>조작 화면 목업 3안</h1>
+    <p><strong>2026-11-02 지금 화면을 그대로 쓰기로 했습니다.</strong> 아래 1~3안은 고르지 않은 견본으로 남겨 둔 것입니다.</p>
+    <p>세 안 모두 지금 조작 화면 코드(<code>react/src/App.jsx</code>)를 그대로 쓰고 배치·색·글꼴만 바꿨습니다. 그래서 버튼·표시·창이 지금 화면과 하나도 다르지 않고, 모두 실제로 눌립니다.
+      가짜 서버를 함께 쓰므로 한 화면에서 긴급정지나 수동 모드를 누르면 네 화면이 같은 상태로 바뀝니다.</p>
+    <nav class="theme" aria-label="미리보기 테마">
+      <a href="?theme=light" data-theme-link="light">라이트로 보기</a>
+      <a href="?theme=dark" data-theme-link="dark">다크로 보기</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="opts" aria-label="목업">
+      <article class="opt">
+        <div class="opt__title"><h2>지금 (검수 후 고친 화면)</h2><a href="../" target="_blank">새 창으로 열기</a></div>
+        <div class="frame"><iframe title="지금 화면" data-src="../" loading="lazy"></iframe></div>
+        <ul>
+          <li><b>배치</b> 왼쪽 조작반(상태 → 긴급정지 → 시작 → 원점 → 운전 모드 → 옮길 부품 → 종료), 오른쪽 카메라 · 각도 · 통계</li>
+          <li><b>색·글꼴</b> 제어함 회색(RAL 7035), IBM Plex Sans KR, 모서리 8px</li>
+        </ul>
+      </article>
+
+      <article class="opt">
+        <div class="opt__title"><h2>1안 레일</h2><a href="1.html" target="_blank">새 창으로 열기</a></div>
+        <div class="frame"><iframe title="1안 레일" data-src="1.html" loading="lazy"></iframe></div>
+        <ul>
+          <li><b>배치</b> 위 띠에 상태와 생산 통계, 가운데 카메라, 오른쪽 레일에 긴급정지와 조작 키를 세로로</li>
+          <li><b>색·글꼴</b> 흰 띠와 옅은 청회색, Noto Sans KR, 모서리 6px</li>
+          <li><b>좋은 점</b> 상태와 통계를 위에서 한눈에 본다. 터치 화면에서 오른손으로 누를 때 팔이 카메라를 가리지 않는다</li>
+          <li><b>걸리는 점</b> 긴급정지가 오른쪽 위로 가서 "중요한 것은 왼쪽 위" 원칙(상태 → 긴급정지 → 시작)을 바꿔야 한다</li>
+        </ul>
+      </article>
+
+      <article class="opt">
+        <div class="opt__title"><h2>2안 콘솔</h2><a href="2.html" target="_blank">새 창으로 열기</a></div>
+        <div class="frame"><iframe title="2안 콘솔" data-src="2.html" loading="lazy"></iframe></div>
+        <ul>
+          <li><b>배치</b> 맨 위 상태 한 줄, 카메라가 폭 대부분, 오른쪽 기둥에 통계(수동 모드면 각도). 아래 콘솔에 긴급정지 · 시작 · 원점 · 운전 모드 · 옮길 부품을 가로 한 줄로</li>
+          <li><b>색·글꼴</b> 지금 글꼴(IBM Plex Sans KR), 아래 콘솔은 한 단계 진한 강판색, 모서리 10px</li>
+          <li><b>좋은 점</b> 기계 조작반처럼 키가 손이 놓이는 아래에 모이고, 카메라가 세 안 중 가장 크다</li>
+          <li><b>걸리는 점</b> 상태(맨 위)와 긴급정지(왼쪽 아래)가 떨어져 있다. 1200px보다 좁은 창에서는 지금 배치로 돌아간다</li>
+        </ul>
+      </article>
+
+      <article class="opt">
+        <div class="opt__title"><h2>3안 세 칸</h2><a href="3.html" target="_blank">새 창으로 열기</a></div>
+        <div class="frame"><iframe title="3안 세 칸" data-src="3.html" loading="lazy"></iframe></div>
+        <ul>
+          <li><b>배치</b> 왼쪽 기둥은 가동 중에도 쓰는 것(상태 · 긴급정지 · 시작/정지 · 종료), 오른쪽 기둥은 정지해서 바꾸는 것(운전 모드 · 옮길 부품 · 원점 · 각도), 가운데 카메라와 통계</li>
+          <li><b>색·글꼴</b> Gothic A1 굵은 글자, 2px 선, 흰 키, 모서리 4px</li>
+          <li><b>좋은 점</b> 가동 중 키와 준비용 키가 양쪽으로 갈라져 잘못 누르기 어렵고, 굵은 글자라 멀리서도 읽힌다</li>
+          <li><b>걸리는 점</b> 카메라 칸이 세 안 중 가장 좁다. 1180px보다 좁은 창에서는 지금 배치로 돌아간다</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="check" aria-labelledby="check-title">
+      <h2 id="check-title">기능 자리 대조</h2>
+      <p>네 화면 모두 같은 버튼·표시·창을 가집니다. 1440×900과 1366×657에서 자동 · 수동 · 긴급정지 · 로그 창 · 해제 확인 창 · 종료 확인 창 여섯 상태를 돌며,
+        보이는 버튼이 모두 화면 안에 있고 다른 것에 가리지 않는지 확인했습니다(로그 창이 카메라 연결 버튼을 덮는 것은 네 화면이 같음).
+        카메라 영상이 켜졌을 때의 버튼(탑뷰/그리퍼 바꾸기 · 카메라 끄기)과 판정 상자는 카메라 칸 안에 있어 네 화면이 같습니다.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th scope="col">기능</th><th scope="col">지금</th><th scope="col">1안 레일</th><th scope="col">2안 콘솔</th><th scope="col">3안 세 칸</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>상태 표시등 · 상태 · 설명</td><td>조작반 맨 위</td><td>위 띠 왼쪽</td><td>맨 위 한 줄</td><td>왼쪽 기둥 맨 위</td></tr>
+            <tr><td>긴급정지 · 해제(확인 창)</td><td>상태 아래</td><td>오른쪽 위(레일 맨 위)</td><td>콘솔 왼쪽</td><td>왼쪽 기둥, 상태 아래</td></tr>
+            <tr><td>시작 / 정지</td><td>긴급정지 아래</td><td>레일, 긴급정지 아래</td><td>콘솔, 긴급정지 오른쪽</td><td>왼쪽 기둥, 긴급정지 아래</td></tr>
+            <tr><td>원점 복귀 · 원점 잡기</td><td>시작 아래</td><td>레일, 시작 아래</td><td>콘솔, 시작 오른쪽</td><td>오른쪽 기둥</td></tr>
+            <tr><td>운전 모드 (자동 / 수동)</td><td>원점 아래</td><td>레일</td><td>콘솔</td><td>오른쪽 기둥 맨 위</td></tr>
+            <tr><td>로봇팔이 옮길 부품</td><td>운전 모드 아래</td><td>레일</td><td>콘솔 오른쪽 끝</td><td>오른쪽 기둥</td></tr>
+            <tr><td>각 키 아래 안내 글</td><td>각 키 아래</td><td>각 키 아래</td><td>각 키 아래</td><td>각 키 아래</td></tr>
+            <tr><td>팔로워암 각도 (수동 모드)</td><td>카메라 아래</td><td>카메라 아래</td><td>통계 기둥 아래</td><td>오른쪽 기둥 아래</td></tr>
+            <tr><td>프로그램 종료 → 종료 화면</td><td>조작반 맨 아래</td><td>레일 맨 아래</td><td>맨 아래 줄 왼쪽</td><td>왼쪽 기둥 맨 아래</td></tr>
+            <tr><td>카메라 화면 · 연결 · 끄기 · 탑뷰/그리퍼 · 판정 상자</td><td>오른쪽 큰 칸</td><td>가운데 큰 칸</td><td>위 큰 칸</td><td>가운데 칸</td></tr>
+            <tr><td>생산 통계 (검사 · 양품 · 불량 · 불량률)</td><td>카메라 아래 한 줄</td><td>위 띠 오른쪽</td><td>카메라 오른쪽 기둥(2 × 2)</td><td>카메라 아래 한 줄</td></tr>
+            <tr><td>장치 연결 (끊김 · 항상 켜짐)</td><td>맨 아래 줄 왼쪽</td><td>맨 아래 줄 왼쪽</td><td>맨 아래 줄</td><td>맨 아래 줄 왼쪽</td></tr>
+            <tr><td>로그인(밖 주소) · 다크 모드 · 로그(알림 점)</td><td>맨 아래 줄 오른쪽</td><td>맨 아래 줄 오른쪽</td><td>맨 아래 줄 오른쪽</td><td>맨 아래 줄 오른쪽</td></tr>
+            <tr><td>로그 창</td><td>보기 영역 위</td><td>카메라 칸 위</td><td>카메라 칸 위</td><td>카메라 칸 위</td></tr>
+            <tr><td>확인 창 · 로그인 창 · 긴급정지 경보 띠</td><td>화면 가운데 · 맨 위</td><td>같음</td><td>같음</td><td>같음</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // 미리보기 테마: 이 쪽 주소의 ?theme=를 각 화면에 넘긴다 (없으면 각 화면이 저장된 값·PC 설정을 따름)
+    (function () {
+      var theme = new URLSearchParams(location.search).get('theme');
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      document.querySelectorAll('[data-theme-link]').forEach(function (a) {
+        if (a.dataset.themeLink === theme) a.setAttribute('aria-current', 'true');
+      });
+      document.querySelectorAll('iframe[data-src]').forEach(function (f) {
+        f.src = f.dataset.src + (theme ? '?theme=' + theme : '');
+      });
+      // 1440×900 화면을 칸 폭에 맞춰 줄인다
+      function fit() {
+        document.querySelectorAll('.frame').forEach(function (box) {
+          box.style.setProperty('--k', box.clientWidth / 1440);
+        });
+      }
+      fit();
+      addEventListener('resize', fit);
+    })();
+  </script>
+</body>
+</html>

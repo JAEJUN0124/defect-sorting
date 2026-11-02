@@ -315,20 +315,17 @@ export default function App() {
   // 생산 통계: 서버가 검사 개수를 무효라고 하면(stats: null — XML v1.0 valid="false") 0 대신 '–'
   const stats = S && S.stats;
 
-  // 장치 연결 (개발용): 서버 → 컨베이어 → 로봇팔 → 리더암 → 카메라들(서버 목록 순) → 그 밖.
+  // 장치 연결: 개발이 끝난 뒤에도 늘 보인다 (사용자 2026-10-17). 서버 → 컨베이어 → 로봇팔 → 리더암 → 카메라들(서버 목록 순) → 그 밖.
   // 브릿지 영상의 카메라는 영상을 보는 동안 /video/status로 (XML의 RobotArm·Status로 대신 판단하지 않는다 — 안내 7장)
   // config.js alwaysOn의 장치는 서버 값과 상관없이 켜짐으로 보인다 (컨베이어가 늦어져서, 사용자 2026-10-19).
   // 보이는 것만 바꾼다 — 장치가 끊겨 거절된 안내를 지우는 것(위 'status')은 서버가 보낸 값으로 한다
   const alwaysOn = (name) => name !== 'server' && (cfg.alwaysOn || []).includes(name);
-  let deviceIds = [];
   const videoCams = bridge && store.state.video.on ? cams.map((c) => 'camera_' + c) : [];
-  if (cfg.devMode) {
-    const ids = Object.keys((S && S.devices) || {});
-    const camDevices = store.cameraIds().map((c) => 'camera_' + c).filter((d) => ids.includes(d) && !videoCams.includes(d));
-    const first = DEVICE_ORDER.filter((d) => ids.includes(d)).concat(camDevices);
-    const ordered = first.concat(ids.filter((d) => !first.includes(d) && !videoCams.includes(d)).sort());
-    deviceIds = ['server'].concat(ordered.length ? ordered : DEVICE_ORDER, videoCams);
-  }
+  const ids = Object.keys((S && S.devices) || {});
+  const camDevices = store.cameraIds().map((c) => 'camera_' + c).filter((d) => ids.includes(d) && !videoCams.includes(d));
+  const first = DEVICE_ORDER.filter((d) => ids.includes(d)).concat(camDevices);
+  const ordered = first.concat(ids.filter((d) => !first.includes(d) && !videoCams.includes(d)).sort());
+  const deviceIds = ['server'].concat(ordered.length ? ordered : DEVICE_ORDER, videoCams);
   const deviceOn = (name) => {
     if (name === 'server') return online;
     if (alwaysOn(name)) return true;
@@ -428,22 +425,6 @@ export default function App() {
               </div>
               <Note id="sort-note" note={ui.notes.sortTarget || sortHint} />
             </div>
-
-            <div className="joints" id="joints" hidden={!showJoints}>
-              <p className="joints__title">{t('joints.title')}</p>
-              <dl className="joints__list" id="joints-list">
-                {JOINTS.map((j) => {
-                  // 퍼센트로 온 값(그리퍼)도 도로 바꿔 보인다 (store.shownAngle — 임의 범위, 화면 표시만)
-                  const v = leader && leader.angles ? store.shownAngle(j, leader.angles[j], leader.units && leader.units[j]) : undefined;
-                  return (
-                    <div key={j}>
-                      <dt>{t('joint.' + j)}</dt>
-                      <dd>{typeof v === 'number' ? Math.round(v) + '°' : '–'}</dd>
-                    </div>
-                  );
-                })}
-              </dl>
-            </div>
           </div>
 
           <div className="exit">
@@ -454,7 +435,7 @@ export default function App() {
           </div>
         </aside>
 
-        {/* 보기: 카메라 → 생산 통계 → 맨 아래 줄(장치 연결 · 다크 모드 · 로그) */}
+        {/* 보기: 카메라 → 팔로워암 각도(수동 모드) → 생산 통계 → 맨 아래 줄(장치 연결 · 로그인 · 다크 모드 · 로그) */}
         <main className="view">
           <section className="camera" aria-label={t('camera.label')}>
             <Camera source={streaming ? src : null} onView={(v) => { camera.current = v; }} />
@@ -498,6 +479,24 @@ export default function App() {
             </button>
           </section>
 
+          {/* 팔로워암 각도 — 수동 모드에서. 읽기만 하는 값이라 보기 영역에 둔다: 조작반에 있으면 노트북 높이(1440×900 등)에서 조작반이 넘쳐
+              프로그램 종료 키가 스크롤 아래로 숨었다. 카메라와 통계 사이라 나타나도 통계·맨 아래 줄은 제자리에 있다 */}
+          <section className="joints" id="joints" aria-labelledby="joints-title" hidden={!showJoints}>
+            <p className="joints__title" id="joints-title">{t('joints.title')}</p>
+            <dl className="joints__list" id="joints-list">
+              {JOINTS.map((j) => {
+                // 퍼센트로 온 값(그리퍼)도 도로 바꿔 보인다 (store.shownAngle — 임의 범위, 화면 표시만)
+                const v = leader && leader.angles ? store.shownAngle(j, leader.angles[j], leader.units && leader.units[j]) : undefined;
+                return (
+                  <div key={j}>
+                    <dt>{t('joint.' + j)}</dt>
+                    <dd>{typeof v === 'number' ? Math.round(v) + '°' : '–'}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </section>
+
           <section className="stats" aria-label={t('stats.label')}>
             <dl className="stats__list">
               <div className="stat"><dt>{t('stats.total')}</dt><dd id="stat-total">{stats ? stats.total.toLocaleString() : '–'}</dd></div>
@@ -508,7 +507,7 @@ export default function App() {
           </section>
 
           <div className="view__foot">
-            <div className="devices" id="devices" hidden={!cfg.devMode}>
+            <div className="devices" id="devices">
               <p className="devices__title">{t('devices.title')}</p>
               <ul className="devices__list" id="device-list">
                 {deviceIds.map((name) => {

@@ -1,0 +1,146 @@
+/* =========================================================
+   목업 3안 — 세 칸
+   왼쪽은 안전·운전(상태 · 긴급정지 · 시작/정지 · 종료), 가운데는 화면(카메라 · 통계), 오른쪽은 준비(운전 모드 · 옮길 부품 · 원점 · 각도).
+   가동 중에 쓰는 키와 정지해서만 바꾸는 키를 양쪽으로 갈라 놓고, 굵은 글자와 2px 선으로 멀리서도 읽히게 한다.
+   조작 화면(App.jsx)과 기능은 그대로이고, 이 파일은 hmi.css 다음에 읽혀 배치·색·글꼴만 바꾼다.
+   ========================================================= */
+
+:root {
+  --font: 'Gothic A1', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  --fs-s: 15px;
+  --fs-m: 17px;
+  --fs-l: 22px;
+  --fs-xl: 44px;
+  --r-key: 4px;
+  --r-screen: 2px;
+
+  --c-bg: #F3F4F5;          /* 가운데 화면 쪽 */
+  --c-plate: #E2E5E8;       /* 왼쪽·오른쪽 기둥 */
+  --c-key: #FFFFFF;
+  --c-key-down: #E8EAEC;
+  --c-line: #8F979F;        /* 굵은 선과 같이 쓰는 진한 테두리 */
+  --c-ink: #0D1013;
+  --c-ink-2: #3D454D;
+  --c-ink-3: #868E96;
+  --c-screen: #15191C;
+  --c-screen-edge: #15191C;
+  --c-primary: #0D1013;
+  --c-primary-hover: #262C31;
+
+  --left-w: clamp(300px, 24vw, 380px);
+  --right-w: clamp(280px, 21vw, 340px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg: #0C0E10;
+    --c-plate: #171B1E;
+    --c-key: #262C31;
+    --c-key-down: #30373D;
+    --c-line: #69727A;
+    --c-ink: #F2F4F6;
+    --c-ink-2: #C6CDD3;
+    --c-ink-3: #6F7880;
+    --c-screen: #050607;
+    --c-screen-edge: #69727A;
+    --c-primary: #F2F4F6;
+    --c-primary-hover: #FFFFFF;
+    --c-on-primary: #0D1013;
+  }
+}
+:root[data-theme="dark"] {
+  --c-bg: #0C0E10;
+  --c-plate: #171B1E;
+  --c-key: #262C31;
+  --c-key-down: #30373D;
+  --c-line: #69727A;
+  --c-ink: #F2F4F6;
+  --c-ink-2: #C6CDD3;
+  --c-ink-3: #6F7880;
+  --c-screen: #050607;
+  --c-screen-edge: #69727A;
+  --c-primary: #F2F4F6;
+  --c-primary-hover: #FFFFFF;
+  --c-on-primary: #0D1013;
+}
+
+/* 굵은 글자 · 2px 선 */
+.key { border-width: 2px; font-weight: 800; }
+.key--quiet { font-weight: 600; }
+.state__word { font-weight: 800; letter-spacing: -0.02em; }
+.stat dd { font-weight: 800; }
+.mode__legend, .joints__title { color: var(--c-ink); font-weight: 600; }
+.lamp--state { width: 20px; height: 20px; }
+
+/* 세 칸은 1180px부터. 그보다 좁으면 지금 화면 배치(왼쪽 조작반)에 이 안의 색·글꼴만 쓴다 */
+@media (min-width: 1180px) {
+  /* 상태       | 카메라 | 운전 모드
+     긴급정지   | 카메라 | 옮길 부품
+     시작/정지  | 카메라 | 원점 두 키
+     (안내)     | 카메라 | (원점 안내)
+                | 카메라 | 각도(수동)
+     종료       | 통계   |
+     맨 아래 줄 (장치 연결 … 로그인 · 다크 모드 · 로그) */
+  .app {
+    grid-template-columns: var(--left-w) minmax(0, 1fr) var(--right-w);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "state   camera mode"
+      "estop   camera sort"
+      "run     camera home"
+      "runnote camera homenote"
+      ".       camera joints"
+      "exit    stats  ."
+      "foot    foot   foot";
+    row-gap: var(--s-4);
+    isolation: isolate;
+  }
+  .panel, .view, .controls { display: contents; }
+
+  /* 왼쪽·오른쪽 기둥 바탕 (맨 아래 줄 위까지) */
+  .app::before,
+  .app::after {
+    content: '';
+    z-index: -1;
+    margin-bottom: calc(-1 * var(--s-4));
+    background: var(--c-plate);
+  }
+  .app::before { grid-area: 1 / 1 / 7 / 2; border-right: 2px solid var(--c-line); }
+  .app::after { grid-area: 1 / 3 / 7 / 4; border-left: 2px solid var(--c-line); }
+
+  .state { grid-area: state; padding: var(--s-5) var(--s-5) 0; }
+  .estop { grid-area: estop; padding: 0 var(--s-5); }
+  #btn-run { grid-area: run; margin: 0 var(--s-5); width: auto; }
+  #run-note { grid-area: runnote; padding: 0 var(--s-5); }
+  .exit { grid-area: exit; align-content: end; margin: 0; padding: 0 var(--s-5); }
+
+  .mode, .homekeys, #home-note, .joints { margin: 0 var(--s-5); }
+  .mode[aria-labelledby="mode-legend"] { grid-area: mode; align-self: center; padding-top: var(--s-5); }
+  .mode[aria-labelledby="sort-legend"] { grid-area: sort; align-self: center; }
+  .homekeys { grid-area: home; align-self: center; grid-template-columns: 1fr; } /* 기둥이 좁아 두 키를 위아래로 */
+  #home-note { grid-area: homenote; }
+  .joints { grid-area: joints; align-self: start; }
+  .joints__list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .camera { grid-area: camera; margin: var(--s-5) var(--s-5) 0; }
+  .stats { grid-area: stats; padding: 0 var(--s-5); }
+
+  .view__foot {
+    grid-area: foot;
+    padding: var(--s-2) var(--s-5);
+    border-top: 2px solid var(--c-line);
+  }
+
+  /* 로그 창은 카메라 칸 위에만 — 왼쪽 기둥(긴급정지)은 가리지 않는다 */
+  .logwin {
+    position: relative;
+    inset: auto;
+    grid-area: camera;
+    justify-self: end;
+    align-self: stretch;
+    width: min(520px, calc(100% - 2 * var(--s-5)));
+    height: auto;
+    margin: var(--s-5) var(--s-5) 0 0;
+    border-width: 2px;
+  }
+}

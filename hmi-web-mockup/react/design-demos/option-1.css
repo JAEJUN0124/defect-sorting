@@ -1,0 +1,157 @@
+/* =========================================================
+   목업 1안 — 레일
+   위쪽 상태 띠(상태 + 생산 통계) + 가운데 카메라 + 오른쪽 조작 레일. 긴급정지는 오른쪽 위, 조작 키는 오른손 쪽에 세로로.
+   조작 화면(App.jsx)과 기능은 그대로이고, 이 파일은 hmi.css 다음에 읽혀 배치·색·글꼴만 바꾼다.
+   안전 색(긴급정지 노랑·빨강, IEC 60073 신호색)은 base.css 값을 그대로 쓴다.
+   ========================================================= */
+
+:root {
+  --font: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  --fs-l: 20px;
+  --fs-xl: 40px;
+  --r-key: 6px;
+
+  --c-bg: #EDF0F3;          /* 카메라 쪽 바탕 */
+  --c-plate: #E1E5E9;       /* 오른쪽 레일 */
+  --c-band: #FFFFFF;        /* 위 상태 띠 · 맨 아래 줄 */
+  --c-key: #FFFFFF;
+  --c-key-down: #EDF0F3;
+  --c-screen: #1A1F24;
+  --c-screen-edge: #1A1F24;
+  --c-ink: #111518;
+  --c-ink-2: #4D5660;
+  --c-ink-3: #8B939B;
+  --c-line: #C8CFD5;
+  --c-primary: #111518;
+  --c-primary-hover: #2A3036;
+
+  --rail-w: clamp(340px, 27vw, 420px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg: #121619;
+    --c-plate: #1A1F23;
+    --c-band: #1A1F23;
+    --c-key: #2A3137;
+    --c-key-down: #333B42;
+    --c-screen: #0A0C0E;
+    --c-screen-edge: #69727A;
+    --c-ink: #E7EAED;
+    --c-ink-2: #AEB6BD;
+    --c-ink-3: #69727A;
+    --c-line: #343C43;
+    --c-primary: #E7EAED;
+    --c-primary-hover: #FFFFFF;
+    --c-on-primary: #15191C;
+  }
+}
+:root[data-theme="dark"] {
+  --c-bg: #121619;
+  --c-plate: #1A1F23;
+  --c-band: #1A1F23;
+  --c-key: #2A3137;
+  --c-key-down: #333B42;
+  --c-screen: #0A0C0E;
+  --c-screen-edge: #69727A;
+  --c-ink: #E7EAED;
+  --c-ink-2: #AEB6BD;
+  --c-ink-3: #69727A;
+  --c-line: #343C43;
+  --c-primary: #E7EAED;
+  --c-primary-hover: #FFFFFF;
+  --c-on-primary: #15191C;
+}
+
+.lamp--state { width: 18px; height: 18px; }
+.state__word { letter-spacing: -0.01em; }
+
+@media (min-width: 960px) {
+  /* 조작반·보기 상자를 풀어 각 칸을 한 격자에 놓는다.
+     상태 · 생산 통계 (위 띠)          | 긴급정지
+     카메라                            | 조작 키 (시작·원점·운전 모드·옮길 부품)
+     각도(수동)                        | 프로그램 종료
+     맨 아래 줄 (장치 연결 … 로그인 · 다크 모드 · 로그) */
+  .app {
+    grid-template-columns: minmax(0, 1fr) auto var(--rail-w);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "state  stats  estop"
+      "camera camera controls"
+      "joints joints exit"
+      "foot   foot   foot";
+    isolation: isolate;
+  }
+  .panel, .view { display: contents; }
+
+  /* 바탕: 위 상태 띠(왼쪽 두 칸)와 오른쪽 레일(긴급정지부터 종료까지 한 판) */
+  .app::before {
+    content: '';
+    grid-area: 1 / 3 / 4 / 4;
+    z-index: -1;
+    background: var(--c-plate);
+    border-left: 1px solid var(--c-line);
+  }
+  .app::after {
+    content: '';
+    grid-area: 1 / 1 / 2 / 3;
+    z-index: -1;
+    background: var(--c-band);
+    border-bottom: 1px solid var(--c-line);
+  }
+
+  .state {
+    grid-area: state;
+    align-content: center;
+    padding: var(--s-5) var(--s-6);
+  }
+  .state__detail { min-height: 0; max-width: 64ch; }
+
+  /* 생산 통계는 위 띠 오른쪽에 — 상태와 같이 한눈에 */
+  .stats { grid-area: stats; align-self: center; padding: var(--s-5) var(--s-6) var(--s-5) 0; }
+  .stats__list { grid-template-columns: repeat(4, auto); gap: var(--s-6); }
+  .stat dd { font-size: 28px; }
+
+  .estop { grid-area: estop; padding: var(--s-5) var(--s-5) var(--s-3); }
+  .controls {
+    grid-area: controls;
+    align-content: start;
+    padding: var(--s-3) var(--s-5);
+    overflow-y: auto;
+  }
+  .exit {
+    grid-area: exit;
+    align-content: end;
+    margin: 0;
+    padding: var(--s-3) var(--s-5) var(--s-4);
+  }
+
+  .camera { grid-area: camera; margin: var(--s-5) var(--s-6) var(--s-4); }
+  .joints { grid-area: joints; align-self: end; padding: 0 var(--s-6) var(--s-4); }
+
+  .view__foot {
+    grid-area: foot;
+    padding: var(--s-2) var(--s-6);
+    background: var(--c-band);
+    border-top: 1px solid var(--c-line);
+  }
+  .notify-dot { border-color: var(--c-band); }
+
+  /* 1366×768 노트북 브라우저처럼 낮은 화면: 레일 여백을 줄여 조작 키가 레일 안에 다 들어가게 */
+  @media (max-height: 720px) {
+    .estop { padding: var(--s-4) var(--s-5) var(--s-2); }
+    .controls { padding: var(--s-2) var(--s-5); }
+  }
+
+  /* 로그 창은 카메라 칸 위에만 — 레일(긴급정지)은 가리지 않는다 */
+  .logwin {
+    position: relative;
+    inset: auto;
+    grid-area: camera;
+    justify-self: end;
+    align-self: stretch;
+    width: min(520px, calc(100% - 2 * var(--s-6)));
+    height: auto;
+    margin: var(--s-5) var(--s-6) var(--s-4) 0;
+  }
+}

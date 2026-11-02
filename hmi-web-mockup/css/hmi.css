@@ -95,7 +95,10 @@
   height: 88px;
   border-radius: 50%;
   background: var(--c-red);
-  transition: transform var(--t-fast);
+}
+/* 줄어든 움직임 설정이면 눌림은 바로 바뀐다 (크기가 줄어드는 것도 움직임이다) */
+@media (prefers-reduced-motion: no-preference) {
+  .estop__head { transition: transform var(--t-fast); }
 }
 /* 눌림(잠김)은 색이 어두워지고 살짝 작아지는 것으로만 보여 준다 */
 .estop__plate:active .estop__head,
@@ -137,17 +140,6 @@
   border: 2px solid var(--c-ink);
   color: var(--c-ink);
 }
-
-/* 수동 모드에서만 보이는 리더암 각도 */
-.joints { display: grid; gap: var(--s-2); }
-.joints__title { font-size: var(--fs-s); color: var(--c-ink-2); }
-.joints__list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-2) var(--s-4);
-}
-.joints__list dt { font-size: var(--fs-s); color: var(--c-ink-2); }
-.joints__list dd { font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .exit { display: grid; justify-items: start; gap: var(--s-2); margin-top: auto; }
 
@@ -232,6 +224,24 @@
 .camera__pick:disabled { cursor: default; color: var(--c-ink-3); }
 .camera__off { z-index: 1; }
 
+/* ---------- 팔로워암 각도 (수동 모드) ----------
+   읽기만 하는 값이라 보기 영역의 카메라와 통계 사이에 둔다. 통계처럼 이름 아래 값, 값은 통계보다 한 단계 작게 */
+
+.joints { display: grid; gap: var(--s-2); }
+.joints__title { font-size: var(--fs-s); color: var(--c-ink-2); }
+.joints__list {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--s-2) var(--s-4);
+}
+.joints__list dt { font-size: var(--fs-s); color: var(--c-ink-2); }
+.joints__list dd {
+  font-size: var(--fs-l);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- 생산 통계 ---------- */
 
 .stats__list {
@@ -247,7 +257,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- 맨 아래 줄: 장치 연결(개발용) · 다크 모드 · 로그 ---------- */
+/* ---------- 맨 아래 줄: 장치 연결 · 로그인 · 다크 모드 · 로그 ---------- */
 
 .view__foot {
   display: flex;
@@ -338,7 +348,7 @@
   color: var(--c-ink-2);
 }
 
-/* ---------- 장치 연결 (개발용) ---------- */
+/* ---------- 장치 연결 (늘 보임. 가짜 서버일 때만 눌러서 끊김을 흉내 낸다) ---------- */
 
 .devices {
   display: flex;
@@ -470,19 +480,22 @@
   .key--quiet { min-height: var(--quiet-h); }
 }
 
-/* 태블릿 이하: 조작반 위, 보기 아래로 쌓기. 로그 창은 화면 전체에 뜬다 */
+/* 태블릿 이하: 조작반 위, 보기 아래로 쌓기.
+   로그 창은 맨 아래 줄 바로 위에 끼워 연다 — 화면 전체를 덮으면 위쪽 조작반의 긴급정지까지 가려 누를 수 없다 */
 @media (max-width: 959px) {
   .app { display: block; height: auto; }
   .panel { overflow: visible; }
   .exit { margin-top: 0; }
   .camera { flex: none; min-height: 0; aspect-ratio: 16 / 9; }
-  .logwin { position: fixed; inset: var(--s-4); width: auto; }
+  .view__foot { order: 1; }
+  .logwin { position: static; width: auto; height: min(60vh, 480px); }
 }
 
 @media (max-width: 599px) {
   .panel { padding: var(--s-5) var(--s-4); }
   .view { --view-pad-y: var(--s-5); --view-pad-x: var(--s-4); }
   .stats__list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .joints__list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .view__foot { flex-wrap: wrap; } /* 장치 줄 아래로 키 줄(로그인 · 다크 모드 · 로그) — 키 이름은 접지 않는다 */
   .view__tools .key--quiet { padding: 0 var(--s-2); } /* 360px에서도 키 셋이 여백 안에 들어가게 */
 }

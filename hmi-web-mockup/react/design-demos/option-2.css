@@ -1,0 +1,138 @@
+/* =========================================================
+   목업 2안 — 콘솔
+   위는 모니터(상태 줄 · 카메라 · 오른쪽 통계 기둥), 아래는 기계 조작 콘솔(긴급정지 · 시작 · 원점 · 운전 모드 · 옮길 부품).
+   조작 키가 손이 놓이는 아래쪽에 한 줄로 모이고, 카메라가 화면 폭을 거의 다 쓴다.
+   조작 화면(App.jsx)과 기능은 그대로이고, 이 파일은 hmi.css 다음에 읽혀 배치·색만 바꾼다(글꼴은 지금과 같은 IBM Plex Sans KR).
+   ========================================================= */
+
+:root {
+  --fs-xl: 32px;
+  --r-key: 10px;
+
+  --c-bg: #E8EBEE;          /* 모니터 쪽 */
+  --c-plate: #C6CCD2;       /* 아래 콘솔 판 (한 단계 진한 강판) */
+  --c-key: #F6F7F8;
+  --c-key-down: #E3E6E9;
+  --c-line: #A9B1B9;
+  --c-ink-2: #4C555F;
+  --c-screen: #20252A;
+  --c-screen-edge: #20252A;
+
+  --estop-w: clamp(250px, 20vw, 300px);
+  --side-w: clamp(200px, 16vw, 250px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg: #111417;
+    --c-plate: #23292E;
+    --c-key: #363E45;
+    --c-key-down: #3F484F;
+    --c-line: #4A535B;
+    --c-ink-2: #B3BBC2;
+    --c-screen: #0A0C0E;
+    --c-screen-edge: #6E777F;
+  }
+}
+:root[data-theme="dark"] {
+  --c-bg: #111417;
+  --c-plate: #23292E;
+  --c-key: #363E45;
+  --c-key-down: #3F484F;
+  --c-line: #4A535B;
+  --c-ink-2: #B3BBC2;
+  --c-screen: #0A0C0E;
+  --c-screen-edge: #6E777F;
+}
+
+/* 콘솔은 1200px부터. 그보다 좁으면 지금 화면 배치(왼쪽 조작반)에 이 안의 색만 쓴다 */
+@media (min-width: 1200px) {
+  /* 상태 줄 (전체 폭)
+     카메라 | 통계 기둥
+     카메라 | 각도(수동)
+     긴급정지 | 시작 · 원점 · 운전 모드 · 옮길 부품   ← 콘솔
+     프로그램 종료 | 맨 아래 줄 (장치 연결 … 로그인 · 다크 모드 · 로그) */
+  .app {
+    grid-template-columns: var(--estop-w) minmax(0, 1fr) var(--side-w);
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      "state  state  state"
+      "camera camera stats"
+      "camera camera joints"
+      "estop  ctl    ctl"
+      "exit   foot   foot";
+    isolation: isolate;
+  }
+  .panel, .view { display: contents; }
+
+  /* 콘솔 판: 긴급정지 줄부터 맨 아래 줄까지 */
+  .app::before {
+    content: '';
+    grid-area: 4 / 1 / 6 / 4;
+    z-index: -1;
+    background: var(--c-plate);
+    border-top: 1px solid var(--c-line);
+  }
+
+  /* 상태는 한 줄 — 표시등 · 상태 · 설명 */
+  .state {
+    grid-area: state;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-5);
+    padding: var(--s-4) var(--s-6);
+  }
+  .state__word { align-self: center; }
+  .state__detail { flex: 1 1 360px; min-height: 0; }
+
+  .camera { grid-area: camera; margin: 0 var(--s-4) var(--s-5) var(--s-6); }
+
+  /* 통계는 카메라 오른쪽 기둥에 두 줄로 (수동 모드면 그 아래 각도) */
+  .stats { grid-area: stats; padding: 0 var(--s-6) var(--s-5) var(--s-2); }
+  .stats__list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-5) var(--s-4); }
+  .joints { grid-area: joints; padding: 0 var(--s-6) var(--s-5) var(--s-2); }
+  .joints__list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .estop { grid-area: estop; padding: var(--s-5) var(--s-4) var(--s-4) var(--s-6); }
+
+  /* 콘솔 키: 시작 | 원점 두 키 | 운전 모드 | 옮길 부품. 안내 글은 각 키 바로 아래 */
+  .controls {
+    grid-area: ctl;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    align-items: end;
+    gap: var(--s-2) var(--s-5);
+    padding: var(--s-5) var(--s-6) var(--s-4) var(--s-4);
+  }
+  #btn-run { grid-column: 1; grid-row: 1; }
+  #run-note { grid-column: 1; grid-row: 2; align-self: start; }
+  .homekeys { grid-column: 2; grid-row: 1; }
+  #home-note { grid-column: 2; grid-row: 2; align-self: start; }
+  .controls .mode { margin-top: 0; }
+  .mode[aria-labelledby="mode-legend"] { grid-column: 3; grid-row: 1 / span 2; align-self: start; }
+  .mode[aria-labelledby="sort-legend"] { grid-column: 4; grid-row: 1 / span 2; align-self: start; }
+  /* 둘 중 하나 고르는 키의 아래쪽을 시작 키 아래쪽에 맞춘다 (이름 줄 + 키 = 시작 키 높이) */
+  .key--mode { min-height: 59px; }
+
+  .exit {
+    grid-area: exit;
+    align-content: center;
+    margin: 0;
+    padding: var(--s-1) var(--s-4) var(--s-3) var(--s-6);
+  }
+  .view__foot { grid-area: foot; padding: var(--s-1) var(--s-6) var(--s-3) var(--s-4); }
+  .notify-dot { border-color: var(--c-plate); }
+
+  /* 로그 창은 카메라 칸 위에만 — 콘솔(긴급정지)은 가리지 않는다 */
+  .logwin {
+    position: relative;
+    inset: auto;
+    grid-area: camera;
+    justify-self: end;
+    align-self: stretch;
+    width: min(520px, 100%);
+    height: auto;
+    margin: 0 var(--s-4) var(--s-5) 0;
+  }
+}
