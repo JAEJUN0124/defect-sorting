@@ -4,7 +4,7 @@
   "lists": "css",
   "title": "불량품 선별 발표 2안",
   "cover": "cover",
-  "order": ["cover", "video", "hook", "idea", "flow", "system", "hardware", "hmi", "features", "signal", "modes", "safety", "link", "progress", "end"],
+  "order": ["cover", "video", "hook", "idea", "flow", "system", "hardware", "hmi", "main", "features", "signal", "modes", "safety", "link", "progress", "end"],
   "sections": {
     "s1": { "description": "소개 영상, 문제와 한 문장으로 줄인 해결", "start": "cover" },
     "s2": { "description": "라인의 작동 과정과 시스템 구성, 하드웨어", "start": "flow" },
