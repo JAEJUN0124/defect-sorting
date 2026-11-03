@@ -1,0 +1,25 @@
+<section id="system" data-transition="fade" style="background:#FBFBFD;color:#1D1D1F;font-family:'Gothic A1', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;align-items:center;gap:0">
+<h2 style="font-size:96px;font-weight:700;line-height:1.1;letter-spacing:-2px;text-align:center">시스템 구성</h2>
+<div style="position:absolute;left:126px;top:418px;width:424px;height:244px;border-radius:30px;background:linear-gradient(135deg, #E0521F 0%, #D62A6E 50%, #6E46E8 100%)"></div>
+<div style="position:absolute;left:128px;top:420px;width:420px;height:240px;border-radius:28px;background:#F0F0F3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+<h3 style="font-size:48px;font-weight:700;line-height:1.2;text-align:center">웹 HMI</h3>
+<p style="font-size:32px;color:#636366;text-align:center">React · 조작 화면</p>
+</div>
+<div style="position:absolute;left:750px;top:420px;width:420px;height:240px;border-radius:28px;background:#F0F0F3;border:1px solid #D2D2D7;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+<h3 style="font-size:48px;font-weight:700;line-height:1.2;text-align:center">서버</h3>
+<p style="font-size:32px;color:#636366;text-align:center">.NET · 공정 제어</p>
+</div>
+<div style="position:absolute;left:1372px;top:345px;width:420px;height:390px;border-radius:28px;background:#F0F0F3;border:1px solid #D2D2D7;display:flex;flex-direction:column;justify-content:center;gap:24px;padding:40px">
+<p style="font-size:24px;color:#636366">장치</p>
+<div style="display:flex;flex-direction:row;justify-content:space-between;align-items:baseline"><p style="font-size:32px;font-weight:700">컨베이어</p><p style="font-size:24px;color:#636366">부품 이송</p></div>
+<div style="display:flex;flex-direction:row;justify-content:space-between;align-items:baseline"><p style="font-size:32px;font-weight:700">카메라 2대</p><p style="font-size:24px;color:#636366">탑뷰 · 그리퍼</p></div>
+<div style="display:flex;flex-direction:row;justify-content:space-between;align-items:baseline"><p style="font-size:32px;font-weight:700">로봇팔</p><p style="font-size:24px;color:#636366">SO-ARM101</p></div>
+<div style="display:flex;flex-direction:row;justify-content:space-between;align-items:baseline"><p style="font-size:32px;font-weight:700">리더암</p><p style="font-size:24px;color:#636366">수동 조작</p></div>
+</div>
+<x-connector x1="548" y1="505" x2="750" y2="505" head="both" style="color:#1D1D1F;border-width:2px"></x-connector>
+<p style="position:absolute;left:548px;top:452px;width:202px;font-size:24px;color:#1D1D1F;text-align:center">웹소켓 · XML</p>
+<x-connector x1="750" y1="575" x2="548" y2="575" head="end" style="color:#636366;border-width:2px;border-style:dashed"></x-connector>
+<p style="position:absolute;left:548px;top:590px;width:202px;font-size:24px;color:#636366;text-align:center">영상 · MJPEG</p>
+<x-connector x1="1170" y1="540" x2="1372" y2="540" head="both" style="color:#1D1D1F;border-width:2px"></x-connector>
+<aside>작업자는 웹 HMI만 봅니다. HMI는 서버와 웹소켓 하나로 XML 메시지를 주고받고, 카메라 영상은 서버가 따로 내줍니다. 서버가 컨베이어·카메라·로봇팔을 움직입니다.</aside>
+</section>

@@ -1,0 +1,23 @@
+<section id="link" data-transition="fade" style="background:#FBFBFD;color:#1D1D1F;font-family:'Gothic A1', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;align-items:center;gap:0">
+<h2 style="font-size:96px;font-weight:700;line-height:1.1;letter-spacing:-2px;text-align:center">연결</h2>
+<div style="flex:1"></div>
+<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:64px;width:1664px">
+<div style="display:flex;flex-direction:column;gap:20px">
+<x-icon name="Link" style="color:#D62A6E;width:64px;height:64px"></x-icon>
+<h3 style="font-size:48px;font-weight:700;line-height:1.2">웹소켓 하나</h3>
+<p style="font-size:32px;color:#636366;line-height:1.4">명령과 상태를 XML로, 명령마다 번호를 붙여 같은 번호로 답을 받습니다</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:20px">
+<x-icon name="Play" style="color:#D62A6E;width:64px;height:64px"></x-icon>
+<h3 style="font-size:48px;font-weight:700;line-height:1.2">영상은 따로</h3>
+<p style="font-size:32px;color:#636366;line-height:1.4">카메라 영상은 HTTP(MJPEG)로 받습니다</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:20px">
+<x-icon name="Globe" style="color:#D62A6E;width:64px;height:64px"></x-icon>
+<h3 style="font-size:48px;font-weight:700;line-height:1.2">밖에서도</h3>
+<p style="font-size:32px;color:#636366;line-height:1.4">Cloudflare를 거쳐 장비망 밖에서도 웹 주소로 엽니다</p>
+</div>
+</div>
+<div style="flex:1"></div>
+<aside>60초마다 연결을 확인하고, 끊기면 화면에 바로 알립니다. 밖에서 열 때는 서버에 필요한 경로만 터널로 넘깁니다.</aside>
+</section>

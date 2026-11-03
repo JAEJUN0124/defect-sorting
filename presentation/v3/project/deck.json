@@ -1,0 +1,19 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-11-03T10:40:00Z" },
+  "lists": "css",
+  "title": "불량품 선별 발표 3안",
+  "order": ["cover", "video", "hook", "idea", "flow", "system", "hardware", "hmi", "features", "signal", "modes", "safety", "link", "progress", "end"],
+  "cover": "cover",
+  "sections": {
+    "s1": { "description": "소개 영상, 같은 부품 속 불량 하나를 찾는 문제와 카메라와 로봇팔로 푸는 한 문장", "start": "cover" },
+    "s2": { "description": "부품이 지나가는 순서와 라인을 이루는 장치", "start": "flow" },
+    "s3": { "description": "작업자가 라인을 운전하는 웹 HMI의 화면, 원칙, 연결", "start": "hmi" },
+    "s4": { "description": "지금까지 확인한 것과 다음 단계", "start": "progress" }
+  },
+  "faces": {
+    "ibm-plex-sans-kr": { "family": "IBM Plex Sans KR", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap" },
+    "jetbrains-mono": { "family": "JetBrains Mono", "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" }
+  },
+  "designSystems": []
+}

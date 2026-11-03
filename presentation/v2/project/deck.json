@@ -1,0 +1,18 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-11-03T10:45:00Z" },
+  "lists": "css",
+  "title": "불량품 선별 발표 2안",
+  "cover": "cover",
+  "order": ["cover", "video", "hook", "idea", "flow", "system", "hardware", "hmi", "features", "signal", "modes", "safety", "link", "progress", "end"],
+  "sections": {
+    "s1": { "description": "소개 영상, 문제와 한 문장으로 줄인 해결", "start": "cover" },
+    "s2": { "description": "라인의 작동 과정과 시스템 구성, 하드웨어", "start": "flow" },
+    "s3": { "description": "웹 HMI의 화면과 기능, 운전과 안전, 연결", "start": "hmi" },
+    "s4": { "description": "지금까지 한 것과 마무리", "start": "progress" }
+  },
+  "faces": {
+    "noto-sans-kr": { "family": "Noto Sans KR", "href": "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" }
+  },
+  "designSystems": []
+}

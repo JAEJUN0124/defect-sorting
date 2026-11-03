@@ -1,0 +1,29 @@
+<section id="link" data-transition="fade" style="background:#FAFBFC;color:#4B545C;font-family:'IBM Plex Sans KR', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:0px">
+<p style="position:absolute;left:128px;top:64px;width:72px;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.4;color:#1F7A4D">13 /</p>
+<p style="position:absolute;left:196px;top:64px;width:600px;font-size:24px;line-height:1.4;color:#6B747C">작업자 화면</p>
+<h2 style="font-size:64px;font-weight:600;line-height:1.15;letter-spacing:-1px;color:#14181C">연결</h2>
+<div style="flex:1"></div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:64px">
+<div style="flex:1;display:flex;flex-direction:column;border-bottom:1px solid #D5DADF">
+<div style="display:flex;flex-direction:column;gap:8px;padding:28px 0px;border-top:1px solid #D5DADF">
+<h3 style="font-size:40px;font-weight:600;line-height:1.2;color:#14181C">웹소켓 하나</h3>
+<p style="font-size:28px;line-height:1.4;color:#4B545C">명령과 상태를 XML로, 명령마다 번호를 붙여 같은 번호로 답을 받습니다</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:28px 0px;border-top:1px solid #D5DADF">
+<h3 style="font-size:40px;font-weight:600;line-height:1.2;color:#14181C">영상은 따로</h3>
+<p style="font-size:28px;line-height:1.4;color:#4B545C">카메라 영상은 HTTP(MJPEG)로 받습니다</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;padding:28px 0px;border-top:1px solid #D5DADF">
+<h3 style="font-size:40px;font-weight:600;line-height:1.2;color:#14181C">밖에서도</h3>
+<p style="font-size:28px;line-height:1.4;color:#4B545C">Cloudflare를 거쳐 장비망 밖에서도 웹 주소로 엽니다</p>
+</div>
+</div>
+<div style="width:800px;display:flex;flex-direction:column;background:#F0F2F4;border:1px solid #D5DADF;padding:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.6;color:#4B545C;white-space:nowrap">&lt;Message version="1.0" type="Command" id="hmi-7"&gt;</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.6;color:#4B545C;white-space:nowrap">&#160;&#160;&lt;Command name="<span style="color:#1F7A4D">ProgramStart</span>" /&gt;</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.6;color:#4B545C;white-space:nowrap">&lt;/Message&gt;</p>
+</div>
+</div>
+<div style="flex:1"></div>
+<aside>60초마다 연결을 확인하고, 끊기면 화면에 바로 알립니다. 밖에서 열 때는 서버에 필요한 경로만 터널로 넘깁니다.</aside>
+</section>

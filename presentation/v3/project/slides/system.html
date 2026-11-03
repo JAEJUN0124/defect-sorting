@@ -1,0 +1,42 @@
+<section id="system" data-transition="fade" style="background:#FAFBFC;color:#4B545C;font-family:'IBM Plex Sans KR', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:0px">
+<!-- HMI 128,500,400,200  서버 760,500,400,200  장치 1392,(296|456|616|776),400,128  버스 x=1276 -->
+<p style="position:absolute;left:128px;top:64px;width:72px;font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.4;color:#1F7A4D">06 /</p>
+<p style="position:absolute;left:196px;top:64px;width:600px;font-size:24px;line-height:1.4;color:#6B747C">라인 구성</p>
+<h2 style="font-size:64px;font-weight:600;line-height:1.15;letter-spacing:-1px;color:#14181C">시스템 구성</h2>
+<div style="position:absolute;left:128px;top:500px;width:400px;height:200px;background:#F0F2F4;border:1px solid #D5DADF;padding:32px;display:flex;flex-direction:column;justify-content:center;gap:8px">
+<h3 style="font-size:40px;font-weight:600;line-height:1.2;color:#14181C">웹 HMI</h3>
+<p style="font-size:28px;line-height:1.4;color:#4B545C">React · 조작 화면</p>
+</div>
+<div style="position:absolute;left:760px;top:500px;width:400px;height:200px;background:#F0F2F4;border:1px solid #D5DADF;padding:32px;display:flex;flex-direction:column;justify-content:center;gap:8px">
+<h3 style="font-size:40px;font-weight:600;line-height:1.2;color:#14181C">서버</h3>
+<p style="font-size:28px;line-height:1.4;color:#4B545C">.NET · 공정 제어</p>
+</div>
+<p style="position:absolute;left:1392px;top:252px;width:400px;font-size:24px;line-height:1.4;color:#6B747C">장치</p>
+<div style="position:absolute;left:1392px;top:296px;width:400px;height:128px;background:#F0F2F4;border:1px solid #D5DADF;padding:20px 24px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+<h3 style="font-size:28px;font-weight:600;line-height:1.3;color:#14181C">컨베이어</h3>
+<p style="font-size:24px;line-height:1.4;color:#4B545C">부품 이송</p>
+</div>
+<div style="position:absolute;left:1392px;top:456px;width:400px;height:128px;background:#F0F2F4;border:1px solid #D5DADF;padding:20px 24px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+<h3 style="font-size:28px;font-weight:600;line-height:1.3;color:#14181C">카메라 2대</h3>
+<p style="font-size:24px;line-height:1.4;color:#4B545C">탑뷰 · 그리퍼</p>
+</div>
+<div style="position:absolute;left:1392px;top:616px;width:400px;height:128px;background:#F0F2F4;border:1px solid #D5DADF;padding:20px 24px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+<h3 style="font-size:28px;font-weight:600;line-height:1.3;color:#14181C">로봇팔</h3>
+<p style="font-size:24px;line-height:1.4;color:#4B545C">SO-ARM101</p>
+</div>
+<div style="position:absolute;left:1392px;top:776px;width:400px;height:128px;background:#F0F2F4;border:1px solid #D5DADF;padding:20px 24px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+<h3 style="font-size:28px;font-weight:600;line-height:1.3;color:#14181C">리더암</h3>
+<p style="font-size:24px;line-height:1.4;color:#4B545C">수동 조작</p>
+</div>
+<x-connector x1="528" y1="570" x2="760" y2="570" head="both" style="color:#1F7A4D;border-width:2px"></x-connector>
+<x-connector x1="760" y1="650" x2="528" y2="650" head="end" style="color:#6B747C;border-width:2px;border-style:dashed"></x-connector>
+<x-connector x1="1276" y1="600" x2="1160" y2="600" head="end" style="color:#6B747C;border-width:2px"></x-connector>
+<x-connector x1="1276" y1="360" x2="1276" y2="840" head="none" style="color:#6B747C;border-width:2px"></x-connector>
+<x-connector x1="1276" y1="360" x2="1392" y2="360" head="end" style="color:#6B747C;border-width:2px"></x-connector>
+<x-connector x1="1276" y1="520" x2="1392" y2="520" head="end" style="color:#6B747C;border-width:2px"></x-connector>
+<x-connector x1="1276" y1="680" x2="1392" y2="680" head="end" style="color:#6B747C;border-width:2px"></x-connector>
+<x-connector x1="1276" y1="840" x2="1392" y2="840" head="end" style="color:#6B747C;border-width:2px"></x-connector>
+<p style="position:absolute;left:536px;top:528px;width:216px;font-size:24px;line-height:1.4;color:#14181C;text-align:center">웹소켓 · XML</p>
+<p style="position:absolute;left:536px;top:666px;width:216px;font-size:24px;line-height:1.4;color:#4B545C;text-align:center">영상 · MJPEG</p>
+<aside>작업자는 웹 HMI만 봅니다. HMI는 서버와 웹소켓 하나로 XML 메시지를 주고받고, 카메라 영상은 서버가 따로 내줍니다. 서버가 컨베이어·카메라·로봇팔을 움직입니다.</aside>
+</section>
